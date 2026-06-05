@@ -7,6 +7,7 @@ import {
   Key,
   LayoutGrid,
   List as ListIcon,
+  Lock,
   Plus,
   Shield,
   Trash2,
@@ -626,6 +627,48 @@ echo $3 >> "$FILE"`);
                 </Button>
               </DropdownContent>
             </Dropdown>
+
+            {/* IDENTITY / Login button */}
+            <Dropdown>
+              <div
+                className={cn(
+                  "flex items-center rounded-md transition-colors",
+                  activeFilter === "identity"
+                    ? "bg-foreground/10 text-foreground hover:bg-foreground/15"
+                    : "bg-foreground/5 text-foreground hover:bg-foreground/10",
+                )}
+              >
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-10 px-3 gap-2 rounded-r-none hover:bg-transparent text-inherit"
+                  onClick={() => setActiveFilter("identity")}
+                >
+                  <Lock size={14} />
+                  {t("keychain.filter.identity")}
+                </Button>
+                <DropdownTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-10 px-1.5 rounded-l-none hover:bg-transparent text-inherit"
+                  >
+                    <ChevronDown size={12} />
+                  </Button>
+                </DropdownTrigger>
+              </div>
+              <DropdownContent className="w-44" align="start" alignToParent>
+                {onSaveIdentity && (
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start gap-2"
+                    onClick={openNewIdentity}
+                  >
+                    <UserPlus size={14} /> {t("keychain.action.newIdentity")}
+                  </Button>
+                )}
+              </DropdownContent>
+            </Dropdown>
           </div>
 
           {/* Search and View Mode - hide search when panel is open */}
@@ -675,139 +718,160 @@ echo $3 >> "$FILE"`);
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto">
-          {/* Keys Section */}
-          <div className="space-y-3 p-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-muted-foreground">
-              {t("keychain.section.keys")}
-            </h2>
-            <span className="text-xs text-muted-foreground">
-              {t("keychain.count.items", { count: filteredKeys.length })}
-            </span>
-          </div>
-
-          {filteredKeys.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <div className="h-16 w-16 rounded-2xl bg-secondary/80 flex items-center justify-center mb-4">
-                <Shield size={32} className="opacity-60" />
+          {activeFilter === "identity" ? (
+            /* Identities Section (Login tab) */
+            <div className="space-y-3 p-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-muted-foreground">
+                  {t("keychain.section.identities")}
+                </h2>
+                <span className="text-xs text-muted-foreground">
+                  {t("keychain.count.items", { count: filteredIdentities.length })}
+                </span>
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                {t("keychain.empty.title")}
-              </h3>
-              <p className="text-sm text-center max-w-sm mb-4">
-                {t("keychain.empty.desc")}
-              </p>
-              {(activeFilter === "key" || activeFilter === "certificate") && (
-                <div className="flex gap-2">
-                  <Button variant="secondary" onClick={openImport}>
-                    <Upload size={14} className="mr-2" />
-                    {t("common.import")}
-                  </Button>
-                  <Button onClick={openGenerate}>
-                    <Plus size={14} className="mr-2" />
-                    {t("common.generate")}
-                  </Button>
+
+              {filteredIdentities.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                  <div className="h-16 w-16 rounded-2xl bg-secondary/80 flex items-center justify-center mb-4">
+                    <Lock size={32} className="opacity-60" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">
+                    {t("keychain.empty.identityTitle")}
+                  </h3>
+                  <p className="text-sm text-center max-w-sm mb-4">
+                    {t("keychain.empty.identityDesc")}
+                  </p>
+                  {onSaveIdentity && (
+                    <Button onClick={openNewIdentity}>
+                      <UserPlus size={14} className="mr-2" />
+                      {t("keychain.action.newIdentity")}
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div
+                  className={
+                    viewMode === "grid"
+                      ? "grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                      : "flex flex-col gap-0"
+                  }
+                >
+                  {filteredIdentities.map((identity) => (
+                    <ContextMenu key={identity.id}>
+                      <ContextMenuTrigger>
+                        <IdentityCard
+                          identity={identity}
+                          viewMode={viewMode}
+                          isSelected={
+                            panel.type === "identity" &&
+                            panel.identity?.id === identity.id
+                          }
+                          onClick={() => {
+                            setPanelStack([{ type: "identity", identity }]);
+                            setDraftIdentity({ ...identity });
+                          }}
+                        />
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem
+                          onClick={() => {
+                            setPanelStack([{ type: "identity", identity }]);
+                            setDraftIdentity({ ...identity });
+                          }}
+                        >
+                          <Edit2 className="mr-2 h-4 w-4" /> {t("action.edit")}
+                        </ContextMenuItem>
+                        {onDeleteIdentity && (
+                          <>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              className="text-destructive"
+                              onClick={() => {
+                                const ok = window.confirm(
+                                  t("confirm.deleteIdentity", {
+                                    name: identity.label || "",
+                                  }),
+                                );
+                                if (!ok) return;
+                                _handleDeleteIdentity(identity.id);
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />{" "}
+                              {t("action.delete")}
+                            </ContextMenuItem>
+                          </>
+                        )}
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  ))}
                 </div>
               )}
             </div>
           ) : (
-            <div
-              className={
-                viewMode === "grid"
-                  ? "grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                  : "flex flex-col gap-0"
-              }
-            >
-              {filteredKeys.map((key) => (
-                <KeyCard
-                  key={key.id}
-                  keyItem={key}
-                  viewMode={viewMode}
-                  isSelected={
-                    (panel.type === "view" && panel.key.id === key.id) ||
-                    (panel.type === "export" && panel.key.id === key.id)
-                  }
-                  isMac={isMacOS()}
-                  onClick={() => openKeyView(key)}
-                  onEdit={() => openKeyEdit(key)}
-                  onExport={() => openKeyExport(key)}
-                  onCopyPublicKey={() => copyPublicKey(key)}
-                  onDelete={() => handleDelete(key.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+            /* Keys Section (Key / Certificate tabs) */
+            <div className="space-y-3 p-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-muted-foreground">
+                  {t("keychain.section.keys")}
+                </h2>
+                <span className="text-xs text-muted-foreground">
+                  {t("keychain.count.items", { count: filteredKeys.length })}
+                </span>
+              </div>
 
-        {/* Identities Section */}
-        {activeFilter === "key" && filteredIdentities.length > 0 && (
-          <div className="space-y-3 px-3 pb-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-muted-foreground">
-                {t("keychain.section.identities")}
-              </h2>
-              <span className="text-xs text-muted-foreground">
-                {t("keychain.count.items", { count: filteredIdentities.length })}
-              </span>
-            </div>
-            <div
-              className={
-                viewMode === "grid"
-                  ? "grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                  : "flex flex-col gap-0"
-              }
-            >
-              {filteredIdentities.map((identity) => (
-                <ContextMenu key={identity.id}>
-                  <ContextMenuTrigger>
-                    <IdentityCard
-                      identity={identity}
+              {filteredKeys.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                  <div className="h-16 w-16 rounded-2xl bg-secondary/80 flex items-center justify-center mb-4">
+                    <Shield size={32} className="opacity-60" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">
+                    {t("keychain.empty.title")}
+                  </h3>
+                  <p className="text-sm text-center max-w-sm mb-4">
+                    {t("keychain.empty.desc")}
+                  </p>
+                  {(activeFilter === "key" || activeFilter === "certificate") && (
+                    <div className="flex gap-2">
+                      <Button variant="secondary" onClick={openImport}>
+                        <Upload size={14} className="mr-2" />
+                        {t("common.import")}
+                      </Button>
+                      <Button onClick={openGenerate}>
+                        <Plus size={14} className="mr-2" />
+                        {t("common.generate")}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  className={
+                    viewMode === "grid"
+                      ? "grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                      : "flex flex-col gap-0"
+                  }
+                >
+                  {filteredKeys.map((key) => (
+                    <KeyCard
+                      key={key.id}
+                      keyItem={key}
                       viewMode={viewMode}
                       isSelected={
-                        panel.type === "identity" &&
-                        panel.identity?.id === identity.id
+                        (panel.type === "view" && panel.key.id === key.id) ||
+                        (panel.type === "export" && panel.key.id === key.id)
                       }
-                      onClick={() => {
-                        setPanelStack([{ type: "identity", identity }]);
-                        setDraftIdentity({ ...identity });
-                      }}
+                      isMac={isMacOS()}
+                      onClick={() => openKeyView(key)}
+                      onEdit={() => openKeyEdit(key)}
+                      onExport={() => openKeyExport(key)}
+                      onCopyPublicKey={() => copyPublicKey(key)}
+                      onDelete={() => handleDelete(key.id)}
                     />
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
-                    <ContextMenuItem
-                      onClick={() => {
-                        setPanelStack([{ type: "identity", identity }]);
-                        setDraftIdentity({ ...identity });
-                      }}
-                    >
-                      <Edit2 className="mr-2 h-4 w-4" /> {t("action.edit")}
-                    </ContextMenuItem>
-                    {onDeleteIdentity && (
-                      <>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          className="text-destructive"
-                          onClick={() => {
-                            const ok = window.confirm(
-                              t("confirm.deleteIdentity", {
-                                name: identity.label || "",
-                              }),
-                            );
-                            if (!ok) return;
-                            _handleDeleteIdentity(identity.id);
-                          }}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />{" "}
-                          {t("action.delete")}
-                        </ContextMenuItem>
-                      </>
-                    )}
-                  </ContextMenuContent>
-                </ContextMenu>
-              ))}
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
         </div>
       </div>
 

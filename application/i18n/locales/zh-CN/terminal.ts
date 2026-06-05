@@ -385,6 +385,7 @@ export const zhCNTerminalMessages: Messages = {
   // Keychain
   'keychain.filter.key': '密钥',
   'keychain.filter.certificate': '证书',
+  'keychain.filter.identity': '登录',
   'keychain.action.generateKey': '生成密钥',
   'keychain.action.importKey': '导入密钥',
   'keychain.action.newIdentity': '新建身份',
@@ -396,6 +397,8 @@ export const zhCNTerminalMessages: Messages = {
   'keychain.count.items': '{count} 项',
   'keychain.empty.title': '设置密钥',
   'keychain.empty.desc': '导入或生成 SSH 密钥用于安全认证。',
+  'keychain.empty.identityTitle': '设置登录凭证',
+  'keychain.empty.identityDesc': '创建登录凭证用于一键快速连接。',
   'keychain.panel.generateKey': '生成密钥',
   'keychain.panel.newKey': '新建密钥',
   'keychain.panel.keyDetails': '密钥详情',

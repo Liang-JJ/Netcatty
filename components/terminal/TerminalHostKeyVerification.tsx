@@ -1,5 +1,5 @@
 import { AlertTriangle, Fingerprint } from 'lucide-react';
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useI18n } from '../../application/i18n/I18nProvider';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
@@ -37,8 +37,30 @@ export const TerminalHostKeyVerification: React.FC<TerminalHostKeyVerificationPr
     const isChanged = hostKeyInfo.status === 'changed';
     const Icon = isChanged ? AlertTriangle : Fingerprint;
 
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Auto-focus the container when mounted so Enter key works immediately
+    useEffect(() => {
+        containerRef.current?.focus();
+    }, []);
+
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                onAddAndContinue();
+            }
+        },
+        [onAddAndContinue],
+    );
+
     return (
-        <div className="space-y-3 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
+        <div
+            ref={containerRef}
+            tabIndex={0}
+            className="space-y-3 animate-in fade-in-0 slide-in-from-bottom-1 duration-200 outline-none"
+            onKeyDown={handleKeyDown}
+        >
             <div
                 className={cn(
                     "rounded-xl border px-3 py-2.5",

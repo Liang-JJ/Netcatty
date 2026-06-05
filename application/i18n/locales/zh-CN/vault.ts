@@ -16,6 +16,17 @@ export const zhCNVaultMessages: Messages = {
   'quickConnect.knownHost.addAndContinue': '加入并继续',
   'quickConnect.addKey': '添加 key',
   'quickConnect.warning.unparsedOptions': '部分 SSH 参数已被忽略: {options}',
+  'quickConnect.manualInput': '手动输入',
+  'quickConnect.fromKeychain': '从钥匙串选择',
+  'quickConnect.credentialSource': '凭证来源',
+  'quickConnect.credentialType': '凭证类型',
+  'quickConnect.credentialType.identity': '登录凭证',
+  'quickConnect.credentialType.sshKey': 'SSH 密钥',
+  'quickConnect.selectCredential': '选择凭证',
+  'quickConnect.selectIdentity': '选择登录凭证...',
+  'quickConnect.selectKey': '选择 SSH 密钥...',
+  'quickConnect.noIdentities': '没有可用的登录凭证',
+  'quickConnect.willLoginAs': '将以 {username} 使用 {method} 方式登录',
 
   // Protocol select dialog
   'protocolSelect.chooseProtocol': '选择协议',

@@ -906,6 +906,7 @@ export function VaultViewLayout({ ctx }: { ctx: VaultViewLayoutContext }) {
           open={isQuickConnectOpen}
           target={quickConnectTarget}
           keys={keys}
+          identities={identities}
           onConnect={handleQuickConnect}
           onSaveHost={handleQuickConnectSaveHost}
           onClose={() => {

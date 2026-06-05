@@ -419,6 +419,17 @@ export const enVaultMessages: Messages = {
   'quickConnect.knownHost.addAndContinue': 'Add and continue',
   'quickConnect.addKey': 'Add key',
   'quickConnect.warning.unparsedOptions': 'Some SSH arguments were ignored: {options}',
+  'quickConnect.manualInput': 'Manual',
+  'quickConnect.fromKeychain': 'Keychain',
+  'quickConnect.credentialSource': 'Credential source',
+  'quickConnect.credentialType': 'Credential Type',
+  'quickConnect.credentialType.identity': 'Login Credential',
+  'quickConnect.credentialType.sshKey': 'SSH Key',
+  'quickConnect.selectCredential': 'Select Credential',
+  'quickConnect.selectIdentity': 'Select login credential...',
+  'quickConnect.selectKey': 'Select SSH key...',
+  'quickConnect.noIdentities': 'No login credentials available',
+  'quickConnect.willLoginAs': 'Will login as {username} using {method}',
 
   // Terminal
   'terminal.connectionErrorTitle': 'Connection Error',

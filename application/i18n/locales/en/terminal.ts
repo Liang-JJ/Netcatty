@@ -395,6 +395,7 @@ export const enTerminalMessages: Messages = {
   // Keychain
   'keychain.filter.key': 'KEY',
   'keychain.filter.certificate': 'CERTIFICATE',
+  'keychain.filter.identity': 'LOGIN',
   'keychain.action.generateKey': 'Generate Key',
   'keychain.action.importKey': 'Import Key',
   'keychain.action.newIdentity': 'New Identity',
@@ -406,6 +407,8 @@ export const enTerminalMessages: Messages = {
   'keychain.count.items': '{count} items',
   'keychain.empty.title': 'Set up your keys',
   'keychain.empty.desc': 'Import or generate SSH keys for secure authentication.',
+  'keychain.empty.identityTitle': 'Set up login credentials',
+  'keychain.empty.identityDesc': 'Create login credentials for quick one-click connections.',
   'keychain.panel.generateKey': 'Generate Key',
   'keychain.panel.newKey': 'New Key',
   'keychain.panel.keyDetails': 'Key Details',
