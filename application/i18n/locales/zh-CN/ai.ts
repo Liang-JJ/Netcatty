@@ -231,6 +231,8 @@ export const zhCNAiMessages: Messages = {
   'terminal.layer.movePanelLeft': '面板移至左侧',
   'terminal.layer.movePanelRight': '面板移至右侧',
   'terminal.layer.closePanel': '关闭面板',
+  'terminal.layer.pinPanel': '钉住面板',
+  'terminal.layer.unpinPanel': '取消钉住',
   'topTabs.openQuickSwitcher': '打开快速切换',
   'topTabs.moreTabs': '更多标签页',
   'topTabs.aiAssistant': 'AI 助手',

@@ -1,5 +1,5 @@
-import { FolderTree, MessageSquare, PanelLeft, PanelRight, Palette, X, Zap } from 'lucide-react';
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { FolderTree, MessageSquare, Palette, PanelLeft, PanelRight, Pin, PinOff, X, Zap } from 'lucide-react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useActiveTabId } from '../application/state/activeTabStore';
 import { canReuseTerminalConnection } from '../application/state/terminalConnectionReuse';
 import { resolveTerminalSessionExitIntent, type TerminalSessionExitEvent } from '../application/state/resolveTerminalSessionExitIntent';
@@ -15,9 +15,11 @@ import { collectSessionIds } from '../domain/workspace';
 
 import { cn, normalizeLineEndings } from '../lib/utils';
 import { detectLocalOs } from '../lib/localShell';
+import { useStoredBoolean } from '../application/state/useStoredBoolean';
 import { useStoredString } from '../application/state/useStoredString';
 import { useStoredNumber } from '../application/state/useStoredNumber';
 import {
+  STORAGE_KEY_SIDE_PANEL_PINNED,
   STORAGE_KEY_SIDE_PANEL_WIDTH,
 } from '../infrastructure/config/storageKeys';
 import { buildCacheKey } from '../application/state/sftp/sharedRemoteHostCache';
@@ -323,9 +325,21 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
   // restore it after a close. Overwritten on open, never cleared on close.
   const lastSidePanelTabRef = useRef<Map<string, SidePanelTab>>(new Map());
 
+  // Pin state: when true, the side panel stays open across tab switches
+  // and maintains the same panel type.
+  const [isSidePanelPinned, setIsSidePanelPinned] = useStoredBoolean(STORAGE_KEY_SIDE_PANEL_PINNED, false);
+  const pinnedSidePanelTabRef = useRef<SidePanelTab>('scripts');
+
   // Whether side panel is open for the currently active tab and which sub-panel
-  const isSidePanelOpenForCurrentTab = activeTabId ? sidePanelOpenTabs.has(activeTabId) : false;
-  const activeSidePanelTab = activeTabId ? sidePanelOpenTabs.get(activeTabId) ?? null : null;
+  // When pinned, the panel is always open and uses the pinned tab type.
+  const isSidePanelOpenForCurrentTab = activeTabId
+    ? (isSidePanelPinned || sidePanelOpenTabs.has(activeTabId))
+    : false;
+  const activeSidePanelTab: SidePanelTab | null = activeTabId
+    ? (isSidePanelPinned
+        ? (sidePanelOpenTabs.get(activeTabId) ?? pinnedSidePanelTabRef.current)
+        : (sidePanelOpenTabs.get(activeTabId) ?? null))
+    : null;
   // Legacy compatibility helpers for SFTP-specific logic
   const isSftpOpenForCurrentTab = activeSidePanelTab === 'sftp';
 
@@ -729,11 +743,33 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
     refocusTerminalSession(sessionId);
   }, [getActiveTerminalSessionId, refocusTerminalSession, syncWorkspaceFocusIfNeeded]);
 
+  // Toggle the pin state for the side panel
+  const handleTogglePin = useCallback(() => {
+    setIsSidePanelPinned(prev => {
+      const next = !prev;
+      // When pinning, record the current panel tab as the pinned tab
+      if (next) {
+        const tabId = activeTabIdRef.current;
+        if (tabId) {
+          const currentTab = sidePanelOpenTabsRef.current.get(tabId);
+          if (currentTab) {
+            pinnedSidePanelTabRef.current = currentTab;
+          }
+        }
+      }
+      return next;
+    });
+  }, [setIsSidePanelPinned]);
+
   // Close the entire side panel for the current tab
   const handleCloseSidePanel = useCallback(() => {
     if (!activeTabId) return;
     const sessionIdToRefocus = getActiveTerminalSessionId();
     syncWorkspaceFocusIfNeeded(sessionIdToRefocus);
+    // Unpin when explicitly closing the panel
+    if (isSidePanelPinned) {
+      setIsSidePanelPinned(false);
+    }
     setSidePanelOpenTabs(prev => {
       const next = new Map(prev);
       next.delete(activeTabId);
@@ -757,7 +793,7 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
       return next;
     });
     refocusTerminalSession(sessionIdToRefocus);
-  }, [activeTabId, getActiveTerminalSessionId, refocusTerminalSession, syncWorkspaceFocusIfNeeded]);
+  }, [activeTabId, getActiveTerminalSessionId, refocusTerminalSession, syncWorkspaceFocusIfNeeded, isSidePanelPinned, setIsSidePanelPinned]);
 
   // Resolve the SFTP host for a tab: a previously-stored host, otherwise the
   // host of the workspace's focused session or the active session. null = none.
@@ -781,7 +817,9 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
   const handleSwitchSidePanelTab = useCallback((tab: SidePanelTab) => {
     const tabId = activeTabIdRef.current;
     if (!tabId) return;
-    const currentPanel = sidePanelOpenTabsRef.current.get(tabId);
+    const currentPanel = isSidePanelPinned
+      ? pinnedSidePanelTabRef.current
+      : sidePanelOpenTabsRef.current.get(tabId);
 
     // If already on this tab, do nothing — user must click X to close
     if (currentPanel === tab) return;
@@ -797,6 +835,11 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
       });
     }
 
+    // Update the pinned tab type when pinned
+    if (isSidePanelPinned) {
+      pinnedSidePanelTabRef.current = tab;
+    }
+
     // Note: When switching away from SFTP, we keep the SFTP host state
     // so the SftpSidePanel stays mounted (hidden) and preserves connections.
     // SFTP state is only cleaned up when the panel is fully closed.
@@ -806,7 +849,7 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
       next.set(tabId, tab);
       return next;
     });
-  }, [resolveSftpHostForTab]);
+  }, [resolveSftpHostForTab, isSidePanelPinned]);
 
   // Toggle SFTP from activity bar header
   const handleToggleSftpFromBar = useCallback(() => {
@@ -1024,8 +1067,34 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
   // Track previous focusedSessionId to detect changes
   const prevFocusedSessionIdRef = useRef<string | undefined>(undefined);
 
+  // When pinned, auto-open the side panel for newly active tabs
+  useEffect(() => {
+    if (!isSidePanelPinned || !activeTabId) return;
+    // Only apply to session/workspace tabs, not vault/sftp standalone views
+    if (activeTabId === 'vault' || activeTabId === 'sftp') return;
+    // If this tab already has the side panel open, nothing to do
+    if (sidePanelOpenTabsRef.current.has(activeTabId)) return;
+    const tab = pinnedSidePanelTabRef.current;
+    // For SFTP, we need a host — skip auto-open if none is resolvable
+    if (tab === 'sftp' && !resolveSftpHostForTab(activeTabId)) {
+      // Fall back to scripts if SFTP host is unavailable
+      setSidePanelOpenTabs(prev => {
+        const next = new Map(prev);
+        next.set(activeTabId, 'scripts');
+        return next;
+      });
+      pinnedSidePanelTabRef.current = 'scripts';
+      return;
+    }
+    setSidePanelOpenTabs(prev => {
+      const next = new Map(prev);
+      next.set(activeTabId, tab);
+      return next;
+    });
+  }, [activeTabId, isSidePanelPinned, resolveSftpHostForTab]);
+
   useTerminalLayerEffects({ activeSidePanelTab, activeTabId, activeTabIdRef, activeTopTabsThemeId, activeWorkspace, activityTrackedSessions, appliedPreviewSessionRef, applyTerminalPreviewVars, applyTopTabsPreviewVars, cancelAnimationFrame, ChunkedEscapeFilter, clearTerminalPreviewVars, clearTimeout, clearTopTabsPreviewVars, document, dropHint, filterTabsMap, focusedSessionId, followAppTerminalTheme, getSessionActivityIdsToClear, handleToggleAiFromTopBar, handleToggleScriptsSidePanel, handleToggleSidePanel, hasNotifiableTerminalOutput, isFocusMode, isTerminalLayerVisible, lastSidePanelTabRef, Map, Math, onSessionData, onSplitSessionRef, onToggleBroadcastRef, onToggleWorkspaceViewModeRef, onUpdateSplitSizes, prevFocusedSessionIdRef, previewTargetSessionId, requestAnimationFrame, ResizeObserver, resizing, sessionActivityStore, sessions, Set, setDropHint, setResizing, setSftpHostForTab, setSftpInitialLocationForTab, setSftpPendingUploadsForTab, setSidePanelOpenTabs, setThemePreview, setTimeout, setupMcpApprovalBridge, setWorkspaceArea, sftpActiveHost, sftpHostForTab, shouldMarkSessionActivity, sidePanelOpenTabs, splitHorizontalHandlersRef, splitVerticalHandlersRef, terminalRendererCwdBySessionRef, themeCommitTimerRef, themePreview, toggleScriptsSidePanelRef, toggleSidePanelRef, validAIScopeTargetIds, validSessionActivityIds, visibleFocusedThemeId, window, workspaceBroadcastHandlersRef, workspaceFocusHandlersRef, workspaceInnerRef, workspaces });
-  return <TerminalLayerView ctx={{ accentMode, activeResizers, activeSidePanelTab, activeTabId, activeTerminalSessionIdForSftp, activeWorkspace, AIChatPanelsHost, aiContextsByTabId, AIStateMaintenanceHost, AIStateProvider, Array, Button, cn, composeBarThemeColors, computeSplitHint, customAccent, draggingSessionId, dropHint, editorWordWrap, effectiveHosts, findSplitNode, focusedFontFamilyId, focusedFontFamilyOverridden, focusedFontSize, focusedFontSizeOverridden, focusedFontWeight, focusedFontWeightOverridden, focusedSessionId, focusedThemeOverridden, FolderTree, followAppTerminalTheme, fontSize, getTerminalCwd, handleAddKnownHost, handleBroadcastInput, handleCloseSession, handleCloseSidePanel, handleCommandExecuted, handleComposeSend, handleFontFamilyChangeForFocusedSession, handleFontFamilyResetForFocusedSession, handleFontSizeChangeForFocusedSession, handleFontSizeResetForFocusedSession, handleFontWeightChangeForFocusedSession, handleFontWeightResetForFocusedSession, handleOpenAI, handleOpenScripts, handleOpenSftp, handleOpenTheme, handleOsDetected, handlePendingUploadHandled, handleSessionExit, handleSftpInitialLocationApplied, handleSidePanelResizeStart, handleSnippetClickForFocusedSession, handleSnippetFromPanel, handleSnippetExecutorChange, handleStatusChange, handleTerminalCwdChange, handleTerminalDataCapture, handleTerminalFontSizeChange, handleThemeChangeForFocusedSession, handleThemeResetForFocusedSession, handleToggleSftpFromBar, handleToggleWorkspaceComposeBar, handleUpdateHost, handleWorkspaceDrop, hosts, hotkeyScheme, identities, isBroadcastEnabled, isComposeBarOpen, isFocusMode, isSidePanelOpenForCurrentTab, isTerminalLayerVisible, keyBindings, keys, knownHosts, MessageSquare, mountedAiTabIds, mountedSftpTabIds, onHotkeyAction, onSetWorkspaceFocusedSession, onSplitSession, Palette, PanelLeft, PanelRight, previewedOrVisibleThemeId, refocusActiveTerminalSession, refocusTerminalSession, renderFocusModeSidebar, resizing, resolveAIExecutorContext, resolvedPreviewTheme, ScriptsSidePanel, sessionChainHostsMap, sessionHostsMap, sessionLogConfig, sessions, setDropHint, setEditorWordWrap, setIsComposeBarOpen, setResizing, setSidePanelPosition, sftpActiveHost, sftpAutoSync, sftpDefaultViewMode, sftpDoubleClickBehavior, sftpInitialLocationForTab, sftpPendingUploadsForTab, sftpShowHiddenFiles, SftpSidePanel, sftpUseCompressedUpload, sidePanelPosition, sidePanelWidth, snippetPackages, snippets, splitHorizontalHandlersRef, splitVerticalHandlersRef, sshDebugLogsEnabled, t, TerminalComposeBar, terminalFontFamilyId, TerminalPanesHost, terminalSettings, terminalTheme, themePreview, ThemeSidePanel, Tooltip, TooltipContent, TooltipTrigger, updateHosts, validAIScopeTargetIds, workspaceBroadcastHandlersRef, workspaceById, workspaceFocusHandlersRef, workspaceInnerRef, workspaceOuterRef, workspaceOverlayRef, workspaceRectsById, X, Zap }} />;
+  return <TerminalLayerView ctx={{ accentMode, activeResizers, activeSidePanelTab, activeTabId, activeTerminalSessionIdForSftp, activeWorkspace, AIChatPanelsHost, aiContextsByTabId, AIStateMaintenanceHost, AIStateProvider, Array, Button, cn, composeBarThemeColors, computeSplitHint, customAccent, draggingSessionId, dropHint, editorWordWrap, effectiveHosts, findSplitNode, focusedFontFamilyId, focusedFontFamilyOverridden, focusedFontSize, focusedFontSizeOverridden, focusedFontWeight, focusedFontWeightOverridden, focusedSessionId, focusedThemeOverridden, FolderTree, followAppTerminalTheme, fontSize, getTerminalCwd, handleAddKnownHost, handleBroadcastInput, handleCloseSession, handleCloseSidePanel, handleCommandExecuted, handleComposeSend, handleFontFamilyChangeForFocusedSession, handleFontFamilyResetForFocusedSession, handleFontSizeChangeForFocusedSession, handleFontSizeResetForFocusedSession, handleFontWeightChangeForFocusedSession, handleFontWeightResetForFocusedSession, handleOpenAI, handleOpenScripts, handleOpenSftp, handleOpenTheme, handleOsDetected, handlePendingUploadHandled, handleSessionExit, handleSftpInitialLocationApplied, handleSidePanelResizeStart, handleSnippetClickForFocusedSession, handleSnippetFromPanel, handleSnippetExecutorChange, handleStatusChange, handleTerminalCwdChange, handleTerminalDataCapture, handleTerminalFontSizeChange, handleThemeChangeForFocusedSession, handleThemeResetForFocusedSession, handleToggleSftpFromBar, handleTogglePin, handleToggleWorkspaceComposeBar, handleUpdateHost, handleWorkspaceDrop, hosts, hotkeyScheme, identities, isBroadcastEnabled, isComposeBarOpen, isFocusMode, isSidePanelOpenForCurrentTab, isSidePanelPinned, isTerminalLayerVisible, keyBindings, keys, knownHosts, MessageSquare, mountedAiTabIds, mountedSftpTabIds, onHotkeyAction, onSetWorkspaceFocusedSession, onSplitSession, Palette, PanelLeft, PanelRight, Pin, PinOff, previewedOrVisibleThemeId, refocusActiveTerminalSession, refocusTerminalSession, renderFocusModeSidebar, resizing, resolveAIExecutorContext, resolvedPreviewTheme, ScriptsSidePanel, sessionChainHostsMap, sessionHostsMap, sessionLogConfig, sessions, setDropHint, setEditorWordWrap, setIsComposeBarOpen, setResizing, setSidePanelPosition, sftpActiveHost, sftpAutoSync, sftpDefaultViewMode, sftpDoubleClickBehavior, sftpInitialLocationForTab, sftpPendingUploadsForTab, sftpShowHiddenFiles, SftpSidePanel, sftpUseCompressedUpload, sidePanelPosition, sidePanelWidth, snippetPackages, snippets, splitHorizontalHandlersRef, splitVerticalHandlersRef, sshDebugLogsEnabled, t, TerminalComposeBar, terminalFontFamilyId, TerminalPanesHost, terminalSettings, terminalTheme, themePreview, ThemeSidePanel, Tooltip, TooltipContent, TooltipTrigger, updateHosts, validAIScopeTargetIds, workspaceBroadcastHandlersRef, workspaceById, workspaceFocusHandlersRef, workspaceInnerRef, workspaceOuterRef, workspaceOverlayRef, workspaceRectsById, X, Zap }} />;
 };
 
 export const TerminalLayer = memo(TerminalLayerInner, terminalLayerAreEqual);

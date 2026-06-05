@@ -161,6 +161,7 @@ export const STORAGE_KEY_GROUP_CONFIGS = 'netcatty_group_configs_v1';
 
 // Side Panel
 export const STORAGE_KEY_SIDE_PANEL_WIDTH = 'netcatty_side_panel_width';
+export const STORAGE_KEY_SIDE_PANEL_PINNED = 'netcatty_side_panel_pinned_v1';
 export const STORAGE_KEY_WORKSPACE_FOCUS_SIDEBAR_WIDTH = 'netcatty_workspace_focus_sidebar_width';
 
 // Port Forwarding (transient cross-window broadcast key)

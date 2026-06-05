@@ -231,6 +231,8 @@ export const ruAiMessages: Messages = {
   'terminal.layer.movePanelLeft': 'Переместить панель влево',
   'terminal.layer.movePanelRight': 'Переместить панель вправо',
   'terminal.layer.closePanel': 'Закрыть панель',
+  'terminal.layer.pinPanel': 'Закрепить панель',
+  'terminal.layer.unpinPanel': 'Открепить панель',
   'topTabs.openQuickSwitcher': 'Открыть быстрый переключатель',
   'topTabs.moreTabs': 'Больше вкладок',
   'topTabs.aiAssistant': 'AI-помощник',

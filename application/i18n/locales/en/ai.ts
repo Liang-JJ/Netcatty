@@ -231,6 +231,8 @@ export const enAiMessages: Messages = {
   'terminal.layer.movePanelLeft': 'Move panel to left',
   'terminal.layer.movePanelRight': 'Move panel to right',
   'terminal.layer.closePanel': 'Close panel',
+  'terminal.layer.pinPanel': 'Pin panel',
+  'terminal.layer.unpinPanel': 'Unpin panel',
   'topTabs.openQuickSwitcher': 'Open quick switcher',
   'topTabs.moreTabs': 'More tabs',
   'topTabs.aiAssistant': 'AI Assistant',
