@@ -360,11 +360,13 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
 
   // ============== Render: Keychain Selection UI (Identity only) ==============
   const renderKeychainSelection = () => {
-    const identityOptions = identities.map((ident) => ({
-      value: ident.id,
-      label: ident.label,
-      sublabel: ident.username,
-    }));
+    const identityOptions = identities
+      .map((ident) => ({
+        value: ident.id,
+        label: ident.label,
+        sublabel: ident.username,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 
     const selectedIdentity = identities.find((i) => i.id === selectedIdentityId);
 

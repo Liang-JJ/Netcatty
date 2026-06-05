@@ -209,13 +209,19 @@ echo $3 >> "$FILE"`);
 
   // Filter identities based on search
   const filteredIdentities = useMemo(() => {
-    if (!search.trim()) return identities;
-    const s = search.toLowerCase();
-    return identities.filter(
-      (i) =>
-        i.label.toLowerCase().includes(s) ||
-        i.username.toLowerCase().includes(s),
-    );
+    let result: Identity[];
+    if (!search.trim()) {
+      result = identities;
+    } else {
+      const s = search.toLowerCase();
+      result = identities.filter(
+        (i) =>
+          i.label.toLowerCase().includes(s) ||
+          i.username.toLowerCase().includes(s),
+      );
+    }
+    // Sort by label alphabetically (case-insensitive)
+    return [...result].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
   }, [identities, search]);
 
   // Push a new panel onto the stack
