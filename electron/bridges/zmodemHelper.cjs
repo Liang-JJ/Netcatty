@@ -105,6 +105,7 @@ function createZmodemSentry(opts) {
   let active = false;
   let currentZSession = null;
   let _needsDrain = false;
+  let _pendingUploadFiles = null;
   const pendingEchoes = [];
   let pendingTerminalSuppression = null;
   let cancelInterruptTimer = null;
@@ -347,10 +348,18 @@ function createZmodemSentry(opts) {
         transferType,
       });
 
+      // Enrich opts with pending drag-and-drop file access so
+      // handleUpload can skip the file dialog when files were pre-set.
+      const enrichedOpts = {
+        ...opts,
+        get pendingFilePaths() { return _pendingUploadFiles; },
+        clearPendingFiles() { _pendingUploadFiles = null; },
+      };
+
       // Provide a drain helper so the upload loop can pause when the
       // underlying transport's write buffer is full.
       const transferOpts = {
-        ...opts,
+        ...enrichedOpts,
         waitForDrain: () => {
           if (!_needsDrain) return Promise.resolve();
           _needsDrain = false;
@@ -506,6 +515,15 @@ function createZmodemSentry(opts) {
         });
       }
     },
+
+    /**
+     * Set pending upload file paths from drag-and-drop.
+     * These will be used by handleUpload instead of showing a file dialog.
+     * @param {string[] | null} filePaths
+     */
+    setPendingUploadFiles(filePaths) {
+      _pendingUploadFiles = filePaths;
+    },
   };
 }
 
@@ -561,19 +579,30 @@ async function handleUpload(zsession, opts) {
   const { BrowserWindow, dialog } = getElectron();
   const yieldToIO = () => new Promise((resolve) => setImmediate(resolve));
 
-  const win = contents ? BrowserWindow.fromWebContents(contents) : null;
-  const result = await dialog.showOpenDialog(win || undefined, {
-    properties: ["openFile", "multiSelections"],
-    title: "Select files to upload (ZMODEM)",
-  });
+  let filePaths;
 
-  if (result.canceled || !result.filePaths.length) {
-    try { zsession.abort(); } catch { /* ignore */ }
-    abortRemoteProcess(opts.writeToRemote);
-    throw new Error("Transfer cancelled");
+  // If the renderer set pending files (drag-and-drop with zmodem mode on),
+  // use them directly without showing the file dialog.
+  if (opts.pendingFilePaths && opts.pendingFilePaths.length > 0) {
+    filePaths = opts.pendingFilePaths;
+    // Clear so a subsequent manual rz doesn't reuse stale paths.
+    if (opts.clearPendingFiles) opts.clearPendingFiles();
+    console.log(`[ZMODEM] Using ${filePaths.length} pending file(s) from drag-and-drop`);
+  } else {
+    const win = contents ? BrowserWindow.fromWebContents(contents) : null;
+    const result = await dialog.showOpenDialog(win || undefined, {
+      properties: ["openFile", "multiSelections"],
+      title: "Select files to upload (ZMODEM)",
+    });
+
+    if (result.canceled || !result.filePaths.length) {
+      try { zsession.abort(); } catch { /* ignore */ }
+      abortRemoteProcess(opts.writeToRemote);
+      throw new Error("Transfer cancelled");
+    }
+
+    filePaths = result.filePaths;
   }
-
-  const filePaths = result.filePaths;
   const fileStats = filePaths.map((fp) => fs.statSync(fp));
 
   const allNames = filePaths.map((fp) => path.basename(fp));
@@ -694,7 +723,19 @@ async function handleUpload(zsession, opts) {
     }
   }
 
-  await withTimeout(zsession.close(), 120000);
+  // Try to close the zmodem session gracefully.  Some rz builds exit
+  // immediately after receiving the last file without sending a ZFIN
+  // response, which causes zsession.close() to hang.  Give it a short
+  // grace period, then abort and kill the remote rz.
+  try {
+    await withTimeout(zsession.close(), 5000);
+  } catch (_err) {
+    console.log(`[ZMODEM] Session close timed out — aborting and interrupting remote rz`);
+    try { zsession.abort(); } catch { /* ignore */ }
+    // Use the SSH-level interrupt if available; it's more reliable than raw bytes.
+    try { opts.interruptRemote?.(); } catch { /* ignore */ }
+    abortRemoteProcess(opts.writeToRemote);
+  }
 
   // rz re-creates overwritten files with the remote umask, dropping their
   // original permission bits. Now that everything is on disk, restore them

@@ -252,5 +252,7 @@ export const zhCNAiMessages: Messages = {
   'zmodem.overwrite.overwrite': '覆盖',
   'zmodem.overwrite.skip': '跳过',
   'zmodem.overwrite.cancel': '取消',
+  'zmodem.speed': '{speed}/s',
+  'zmodem.eta': '剩余 {time}',
   'settings.shortcuts.resetToDefault': '重置为默认',
 };

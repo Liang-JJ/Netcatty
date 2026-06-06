@@ -205,6 +205,7 @@ declare global {
       }) => void
     ): () => void;
     cancelZmodem?(sessionId: string): void;
+    setPendingZmodemUpload?(sessionId: string, filePaths: string[]): void;
     onZmodemOverwriteRequest?(
       sessionId: string,
       cb: (payload: { sessionId: string; requestId: string; filename: string }) => void
