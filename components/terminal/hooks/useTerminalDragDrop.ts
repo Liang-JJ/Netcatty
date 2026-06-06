@@ -3,7 +3,8 @@ import type React from "react";
 import { useRef, useState } from "react";
 
 import { logger } from "../../../lib/logger";
-import { extractDropEntries, type DropEntry } from "../../../lib/sftpFileUtils";
+import { extractDropEntries, getPathForFile } from "../../../lib/sftpFileUtils";
+import { netcattyBridge } from "../../../infrastructure/services/netcattyBridge";
 import type { Host, TerminalSession } from "../../../types";
 import { toast } from "../../ui/toast";
 import {
@@ -14,8 +15,9 @@ import {
 interface UseTerminalDragDropOptions {
   host: Host;
   isLocalConnection: boolean;
+  isZmodemUploadMode: boolean;
   onOpenSftp?: TerminalProps["onOpenSftp"];
-  resolveSftpInitialPath: (options?: { preferFreshBackend?: boolean }) => Promise<string | undefined>;
+  resolveSftpInitialPath: () => Promise<string | undefined>;
   scrollToBottomAfterProgrammaticInput: (data: string) => void;
   sessionId: string;
   sessionRef: React.MutableRefObject<string | null>;
@@ -27,62 +29,10 @@ interface UseTerminalDragDropOptions {
   termRef: React.MutableRefObject<XTerm | null>;
 }
 
-export async function resolveTerminalDropUploadInitialPath(
-  resolveSftpInitialPath: UseTerminalDragDropOptions["resolveSftpInitialPath"],
-): Promise<string | undefined> {
-  return resolveSftpInitialPath({ preferFreshBackend: true });
-}
-
-export async function handleTerminalDropEntries({
-  dropEntries,
-  host,
-  isLocalConnection,
-  onOpenSftp,
-  resolveSftpInitialPath,
-  scrollToBottomAfterProgrammaticInput,
-  sessionId,
-  sessionRef,
-  terminalBackend,
-  termRef,
-}: Pick<
-  UseTerminalDragDropOptions,
-  | "host"
-  | "isLocalConnection"
-  | "onOpenSftp"
-  | "resolveSftpInitialPath"
-  | "scrollToBottomAfterProgrammaticInput"
-  | "sessionId"
-  | "sessionRef"
-  | "terminalBackend"
-  | "termRef"
-> & {
-  dropEntries: DropEntry[];
-}): Promise<void> {
-  if (dropEntries.length === 0) {
-    return;
-  }
-
-  if (isLocalConnection) {
-    const paths = extractRootPathsFromDropEntries(dropEntries);
-
-    if (paths.length > 0 && termRef.current && sessionRef.current) {
-      const pathsText = paths.join(" ");
-      terminalBackend.writeToSession(sessionRef.current, pathsText);
-      scrollToBottomAfterProgrammaticInput(pathsText);
-      termRef.current.focus();
-    }
-    return;
-  }
-
-  if (onOpenSftp) {
-    const initialPath = await resolveTerminalDropUploadInitialPath(resolveSftpInitialPath);
-    onOpenSftp(host, initialPath, dropEntries, sessionId);
-  }
-}
-
 export function useTerminalDragDrop({
   host,
   isLocalConnection,
+  isZmodemUploadMode,
   onOpenSftp,
   resolveSftpInitialPath,
   scrollToBottomAfterProgrammaticInput,
@@ -137,20 +87,66 @@ export function useTerminalDragDrop({
       return;
     }
 
+    // Snapshot the FileList BEFORE extractDropEntries — webkitGetAsEntry()
+    // consumes the DataTransfer items, making .files empty afterwards.
+    const droppedFiles: File[] = [];
+    for (let i = 0; i < e.dataTransfer.files.length; i++) {
+      droppedFiles.push(e.dataTransfer.files[i]);
+    }
+
     try {
       const dropEntries = await extractDropEntries(e.dataTransfer);
-      await handleTerminalDropEntries({
-        dropEntries,
-        host,
-        isLocalConnection,
-        onOpenSftp,
-        resolveSftpInitialPath,
-        scrollToBottomAfterProgrammaticInput,
-        sessionId,
-        sessionRef,
-        terminalBackend,
-        termRef,
-      });
+
+      if (dropEntries.length === 0) {
+        return;
+      }
+
+      if (isLocalConnection) {
+        const paths = extractRootPathsFromDropEntries(dropEntries);
+
+        if (paths.length > 0 && termRef.current && sessionRef.current) {
+          const pathsText = paths.join(" ");
+          terminalBackend.writeToSession(sessionRef.current, pathsText);
+          scrollToBottomAfterProgrammaticInput(pathsText);
+          termRef.current.focus();
+        }
+      } else if (isZmodemUploadMode) {
+        // Zmodem upload mode: collect absolute file paths, send them to the
+        // main process so handleUpload can skip the file dialog, then write
+        // "rz -E" to the terminal to trigger the remote zmodem receive.
+        const sid = sessionRef.current || sessionId;
+        if (!sid || droppedFiles.length === 0) {
+          toast.error("Zmodem: 无活跃会话或无拖放文件", "Zmodem 上传失败");
+          return;
+        }
+
+        const filePaths: string[] = [];
+        for (const file of droppedFiles) {
+          const fp = getPathForFile(file);
+          if (fp) filePaths.push(fp);
+        }
+
+        if (filePaths.length === 0) {
+          const hasGetPath = !!netcattyBridge.get()?.getPathForFile;
+          const names = droppedFiles.map(f => f.name).join(", ");
+          toast.error(
+            `Zmodem: 无法解析文件路径 (${droppedFiles.length}个文件: ${names})。` +
+            `getPathForFile 可用: ${hasGetPath}`,
+            "Zmodem 上传失败"
+          );
+          return;
+        }
+
+        const bridge = netcattyBridge.get();
+        bridge?.setPendingZmodemUpload?.(sid, filePaths);
+        const cmd = "rz -E\r";
+        terminalBackend.writeToSession(sid, cmd);
+        scrollToBottomAfterProgrammaticInput(cmd);
+        termRef.current?.focus();
+      } else if (onOpenSftp) {
+        const initialPath = await resolveSftpInitialPath();
+        onOpenSftp(host, initialPath, dropEntries, sessionId);
+      }
     } catch (error) {
       logger.error("Failed to handle file drop", error);
       toast.error(t("terminal.dragDrop.errorMessage"), t("terminal.dragDrop.errorTitle"));

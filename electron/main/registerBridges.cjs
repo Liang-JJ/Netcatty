@@ -202,6 +202,14 @@ function createBridgeRegistrar(context) {
         session.zmodemSentry.cancel();
       }
     });
+
+    // ZMODEM set pending upload files (from drag-and-drop)
+    ipcMain.on("netcatty:zmodem:set-pending-upload", (_event, payload) => {
+      const session = sessions.get(payload.sessionId);
+      if (session?.zmodemSentry?.setPendingUploadFiles) {
+        session.zmodemSentry.setPendingUploadFiles(payload.filePaths);
+      }
+    });
   
     // Fig autocomplete spec loader — uses dynamic import() since @withfig/autocomplete is ESM
     ipcMain.handle("netcatty:figspec:list", async () => {

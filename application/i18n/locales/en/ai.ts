@@ -356,5 +356,7 @@ export const enAiMessages: Messages = {
   'zmodem.overwrite.overwrite': 'Overwrite',
   'zmodem.overwrite.skip': 'Skip',
   'zmodem.overwrite.cancel': 'Cancel',
+  'zmodem.speed': '{speed}/s',
+  'zmodem.eta': '{time} left',
   'settings.shortcuts.resetToDefault': 'Reset to default',
 };

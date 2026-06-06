@@ -183,6 +183,9 @@ function createPreloadApi(ctx) {
   cancelZmodem: (sessionId) => {
     ipcRenderer.send("netcatty:zmodem:cancel", { sessionId });
   },
+  setPendingZmodemUpload: (sessionId, filePaths) => {
+    ipcRenderer.send("netcatty:zmodem:set-pending-upload", { sessionId, filePaths });
+  },
   onZmodemOverwriteRequest: (sessionId, cb) => {
     if (!zmodemOverwriteListeners.has(sessionId)) zmodemOverwriteListeners.set(sessionId, new Set());
     zmodemOverwriteListeners.get(sessionId).add(cb);

@@ -38,6 +38,9 @@ export interface TerminalToolbarProps {
     // Terminal encoding
     terminalEncoding?: 'utf-8' | 'gb18030';
     onSetTerminalEncoding?: (encoding: 'utf-8' | 'gb18030') => void;
+    // Zmodem upload mode
+    isZmodemUploadMode?: boolean;
+    onToggleZmodemUploadMode?: () => void;
 }
 
 export const TerminalToolbar: React.FC<TerminalToolbarProps> = ({
@@ -61,6 +64,8 @@ export const TerminalToolbar: React.FC<TerminalToolbarProps> = ({
     onToggleComposeBar,
     terminalEncoding,
     onSetTerminalEncoding,
+    isZmodemUploadMode,
+    onToggleZmodemUploadMode,
 }) => {
     const { t } = useI18n();
     const [highlightPopoverOpen, setHighlightPopoverOpen] = useState(false);
@@ -193,6 +198,7 @@ export const TerminalToolbar: React.FC<TerminalToolbarProps> = ({
                 </Tooltip>
             )}
 
+            {/* YMODEM send (serial only) */}
             {isSerialTerminal && (
                 <Tooltip>
                     <TooltipTrigger asChild>
@@ -209,6 +215,31 @@ export const TerminalToolbar: React.FC<TerminalToolbarProps> = ({
                     </TooltipTrigger>
                     <TooltipContent>
                         {status === 'connected' ? t("terminal.toolbar.sendYmodem") : t("terminal.toolbar.availableAfterConnect")}
+                    </TooltipContent>
+                </Tooltip>
+            )}
+
+            {/* Zmodem upload toggle (non-SSH connections skip) */}
+            {!hidesSftp && onToggleZmodemUploadMode && (
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                            variant="secondary"
+                            size="icon"
+                            className={cn(buttonBase, status !== 'connected' && "opacity-50")}
+                            aria-label={t("terminal.toolbar.zmodemUpload")}
+                            aria-pressed={isZmodemUploadMode}
+                            onClick={onToggleZmodemUploadMode}
+                            disabled={status !== 'connected'}
+                            style={isZmodemUploadMode ? activeButtonStyle : undefined}
+                        >
+                            <Upload size={12} />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        {status === 'connected'
+                            ? (isZmodemUploadMode ? t("terminal.toolbar.zmodemUploadOn") : t("terminal.toolbar.zmodemUpload"))
+                            : t("terminal.toolbar.availableAfterConnect")}
                     </TooltipContent>
                 </Tooltip>
             )}
