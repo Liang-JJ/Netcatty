@@ -1,6 +1,12 @@
 const { moshExtraResources } = require('./scripts/mosh-extra-resources.cjs');
 const { etExtraResources } = require('./scripts/et-extra-resources.cjs');
 
+// Respect npm_config_arch so single-arch scripts (pack:win-x64, etc.) build
+// only one arch. When unset ("npm run pack:mac"), default to both.
+const npmConfigArch = process.env.npm_config_arch;
+const macArchs = npmConfigArch ? [npmConfigArch] : ['arm64', 'x64'];
+const winArchs = npmConfigArch ? [npmConfigArch] : ['x64', 'arm64'];
+
 /**
  * @type {import('electron-builder').Configuration}
  */
@@ -133,11 +139,11 @@ module.exports = {
         target: [
             {
                 target: 'dmg',
-                arch: ['arm64', 'x64']
+                arch: macArchs
             },
             {
                 target: 'zip',
-                arch: ['arm64', 'x64']
+                arch: macArchs
             }
         ],
         category: 'public.app-category.developer-tools',
@@ -170,11 +176,11 @@ module.exports = {
         target: [
             {
                 target: 'nsis',
-                arch: ['x64', 'arm64']
+                arch: winArchs
             },
             {
                 target: 'portable',
-                arch: ['x64', 'arm64']
+                arch: winArchs
             }
         ],
         extraResources: [...moshExtraResources('win32'), ...etExtraResources('win32')]
