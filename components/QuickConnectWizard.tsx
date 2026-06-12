@@ -9,7 +9,7 @@ import {
   Plus,
   User,
 } from "lucide-react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../application/i18n/I18nProvider";
 import type { QuickConnectTarget } from "../domain/quickConnect";
 import { formatHostPort } from "../domain/host";
@@ -82,6 +82,14 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
     () => identities.find((identity) => identity.id === selectedIdentityId),
     [identities, selectedIdentityId],
   );
+  const wizardContentRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const protocolButtonRefs = {
+    ssh: useRef<HTMLButtonElement>(null),
+    mosh: useRef<HTMLButtonElement>(null),
+    et: useRef<HTMLButtonElement>(null),
+    telnet: useRef<HTMLButtonElement>(null),
+  };
 
   // Reset state when target changes
   React.useEffect(() => {
@@ -98,6 +106,17 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
       setKnownHostInfo(null);
     }
   }, [open, target]);
+
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => {
+      const firstFocusable = wizardContentRef.current?.querySelector<HTMLElement>(
+        'input:not([type="hidden"]):not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      firstFocusable?.focus();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [open, step]);
 
   const canUseSelectedIdentity = useMemo(
     () => isQuickConnectIdentityUsable(selectedIdentity, keys, protocol),
@@ -158,6 +177,29 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
   ) => {
     handleProtocolSelect(proto);
     setPort(parseInt(rawValue) || fallbackPort);
+  };
+
+  const handleProtocolKeyDown = (
+    event: React.KeyboardEvent,
+    currentProtocol: QuickConnectProtocol,
+  ) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      handleContinue();
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const protocols: QuickConnectProtocol[] = ["ssh", "mosh", "et", "telnet"];
+    const currentIndex = protocols.indexOf(currentProtocol);
+    const nextIndex = event.key === "ArrowDown"
+      ? (currentIndex + 1) % protocols.length
+      : (currentIndex - 1 + protocols.length) % protocols.length;
+    const nextProtocol = protocols[nextIndex];
+    handleProtocolSelect(nextProtocol);
+    protocolButtonRefs[nextProtocol].current?.focus();
   };
 
   // Navigate to next step
@@ -255,6 +297,37 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
     protocol,
   ]);
 
+  const handleModalKeyDown = (event: React.KeyboardEvent) => {
+    if (event.defaultPrevented) return;
+    if (event.key === "Enter") {
+      const active = document.activeElement;
+      const isBackOrClose = active instanceof HTMLElement
+        && (active.getAttribute("data-action") === "back" || active.getAttribute("data-action") === "close");
+      if (!isBackOrClose && canProceed) {
+        event.preventDefault();
+        handleContinue();
+      }
+      return;
+    }
+
+    if (event.key !== "Tab" || !modalRef.current) return;
+    const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+      'input:not([type="hidden"]):not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   // Render protocol selection step
   const renderProtocolStep = () => (
     <div className="space-y-6">
@@ -263,13 +336,15 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
       <div className="space-y-3">
         {/* SSH */}
         <button
+          ref={protocolButtonRefs.ssh}
           className={cn(
-            "w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left",
+            "w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left outline-none",
             protocol === "ssh"
-              ? "border-primary bg-primary/5"
-              : "border-border/60 hover:border-border hover:bg-secondary/50",
+              ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+              : "border-border/60 hover:border-border hover:bg-secondary/50 focus-visible:ring-2 focus-visible:ring-primary/30",
           )}
           onClick={() => handleProtocolSelect("ssh")}
+          onKeyDown={(event) => handleProtocolKeyDown(event, "ssh")}
         >
           <div className="flex items-center gap-3">
             <div
@@ -305,13 +380,15 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
 
         {/* Mosh */}
         <button
+          ref={protocolButtonRefs.mosh}
           className={cn(
-            "w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left",
+            "w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left outline-none",
             protocol === "mosh"
-              ? "border-primary bg-primary/5"
-              : "border-border/60 hover:border-border hover:bg-secondary/50",
+              ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+              : "border-border/60 hover:border-border hover:bg-secondary/50 focus-visible:ring-2 focus-visible:ring-primary/30",
           )}
           onClick={() => handleProtocolSelect("mosh")}
+          onKeyDown={(event) => handleProtocolKeyDown(event, "mosh")}
         >
           <div className="flex items-center gap-3">
             <div
@@ -347,13 +424,15 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
 
         {/* Eternal Terminal */}
         <button
+          ref={protocolButtonRefs.et}
           className={cn(
-            "w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left",
+            "w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left outline-none",
             protocol === "et"
-              ? "border-primary bg-primary/5"
-              : "border-border/60 hover:border-border hover:bg-secondary/50",
+              ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+              : "border-border/60 hover:border-border hover:bg-secondary/50 focus-visible:ring-2 focus-visible:ring-primary/30",
           )}
           onClick={() => handleProtocolSelect("et")}
+          onKeyDown={(event) => handleProtocolKeyDown(event, "et")}
         >
           <div className="flex items-center gap-3">
             <div
@@ -389,13 +468,15 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
 
         {/* Telnet */}
         <button
+          ref={protocolButtonRefs.telnet}
           className={cn(
-            "w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left",
+            "w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left outline-none",
             protocol === "telnet"
-              ? "border-primary bg-primary/5"
-              : "border-border/60 hover:border-border hover:bg-secondary/50",
+              ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+              : "border-border/60 hover:border-border hover:bg-secondary/50 focus-visible:ring-2 focus-visible:ring-primary/30",
           )}
           onClick={() => handleProtocolSelect("telnet")}
+          onKeyDown={(event) => handleProtocolKeyDown(event, "telnet")}
         >
           <div className="flex items-center gap-3">
             <div
@@ -470,6 +551,8 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
           autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter" && username.trim()) {
+              e.preventDefault();
+              e.stopPropagation();
               handleContinue();
             }
           }}
@@ -577,6 +660,8 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter" && password.length > 0) {
+                  e.preventDefault();
+                  e.stopPropagation();
                   handleConnect();
                 }
               }}
@@ -676,12 +761,14 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
       onClick={onClose}
     >
       <div
+        ref={modalRef}
         className="w-[560px] max-w-[90vw] bg-background border border-border rounded-2xl animate-in fade-in-0 zoom-in-95 duration-200"
         style={{
           boxShadow:
             "0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 12px 24px -8px rgba(0, 0, 0, 0.15)",
         }}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleModalKeyDown}
       >
         {/* Header */}
         <div className="px-6 py-4 border-b border-border/50">
@@ -708,7 +795,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
         )}
 
         {/* Content */}
-        <div className="px-6 py-4">
+        <div ref={wizardContentRef} className="px-6 py-4">
           {step === "protocol" && renderProtocolStep()}
           {step === "username" && renderUsernameStep()}
           {step === "knownhost" && renderKnownHostStep()}
@@ -719,6 +806,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
         <div className="px-6 py-4 border-t border-border/50 flex items-center justify-between">
           <Button
             variant="secondary"
+            data-action={step === "protocol" ? "close" : "back"}
             onClick={step === "protocol" ? onClose : handleBack}
           >
             {step === "protocol" ? (
