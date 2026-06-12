@@ -619,6 +619,16 @@ const TerminalComponent: React.FC<TerminalProps> = ({
     onStatusChange?.(sessionId, next);
   };
 
+  // Force-focus the terminal when the connection is established
+  useEffect(() => {
+    if (status === "connected" && termRef.current) {
+      const timer = setTimeout(() => {
+        termRef.current?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
+
   const handleTerminalDataCaptureOnce = useCallback((capturedSessionId: string, data: string) => {
     const captureHandler = onTerminalDataCaptureRef.current;
     if (!captureHandler || terminalDataCapturedRef.current) return;

@@ -1,5 +1,5 @@
 import { AlertTriangle, Fingerprint } from 'lucide-react';
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useI18n } from '../../application/i18n/I18nProvider';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
@@ -36,9 +36,26 @@ export const TerminalHostKeyVerification: React.FC<TerminalHostKeyVerificationPr
     const { t } = useI18n();
     const isChanged = hostKeyInfo.status === 'changed';
     const Icon = isChanged ? AlertTriangle : Fingerprint;
+    const addAndContinueRef = useRef<HTMLButtonElement>(null);
+
+    // Auto-focus the "Add and Continue" / "Update and Continue" button
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            addAndContinueRef.current?.focus();
+        }, 50);
+        return () => clearTimeout(timer);
+    }, []);
 
     return (
-        <div className="space-y-3 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
+        <div
+            className="space-y-3 animate-in fade-in-0 slide-in-from-bottom-1 duration-200"
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onAddAndContinue();
+                }
+            }}
+        >
             <div
                 className={cn(
                     "rounded-xl border px-3 py-2.5",
@@ -115,7 +132,7 @@ export const TerminalHostKeyVerification: React.FC<TerminalHostKeyVerificationPr
                 <Button variant="outline" size="sm" className="h-7 px-3 text-[11px]" onClick={onContinue}>
                     {t('common.continue')}
                 </Button>
-                <Button size="sm" className="h-7 px-3 text-[11px]" onClick={onAddAndContinue}>
+                <Button ref={addAndContinueRef} size="sm" className="h-7 px-3 text-[11px]" onClick={onAddAndContinue}>
                     {isChanged
                         ? t('terminal.hostKey.updateAndContinue')
                         : t('terminal.hostKey.addAndContinue')}
