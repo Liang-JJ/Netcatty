@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Fork**: 本仓库是 [binaricat/Netcatty](https://github.com/binaricat/Netcatty) 的 fork。
+> 私有修改和补充架构文档见 [FORK.md](./FORK.md)。
+
 ## Commands
 
 ```bash
