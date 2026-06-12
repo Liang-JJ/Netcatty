@@ -1,6 +1,6 @@
-import { FolderTree, History, MessageSquare, PanelLeft, PanelRight, Palette, X, Zap } from 'lucide-react';
+import { FolderTree, History, MessageSquare, PanelLeft, PanelRight, Palette, Pin, PinOff, X, Zap } from 'lucide-react';
 import React, { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { activeTabStore } from '../application/state/activeTabStore';
+import { activeTabStore, useActiveTabId } from '../application/state/activeTabStore';
 import { getScriptRecordingSnapshot } from '../application/state/scriptRecordingStore.ts';
 import { canReuseTerminalConnection } from '../application/state/terminalConnectionReuse';
 import { resolveTerminalSessionExitIntent, type TerminalSessionExitEvent } from '../application/state/resolveTerminalSessionExitIntent';
@@ -21,10 +21,12 @@ import { isPluginHostProtocol } from '../domain/pluginConnection';
 
 import { cn, normalizeLineEndings } from '../lib/utils';
 import { detectLocalOs } from '../lib/localShell';
+import { useStoredBoolean } from '../application/state/useStoredBoolean';
 import { useStoredString } from '../application/state/useStoredString';
 import { useStoredNumber } from '../application/state/useStoredNumber';
 import { useStoredBoolean } from '../application/state/useStoredBoolean';
 import {
+  STORAGE_KEY_SIDE_PANEL_PINNED,
   STORAGE_KEY_SIDE_PANEL_WIDTH,
   STORAGE_KEY_TERMINAL_COMPOSE_BAR_OPEN,
 } from '../infrastructure/config/storageKeys';
@@ -602,6 +604,11 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
   // restore it after a close. Overwritten on open, never cleared on close.
   const lastSidePanelTabRef = useRef<Map<string, SidePanelTab>>(new Map());
   const notesReturnTabRef = useRef<Map<string, SidePanelTab>>(new Map());
+
+  // Pin state: when true, the side panel stays open across tab switches
+  // and maintains the same panel type.
+  const [isSidePanelPinned, setIsSidePanelPinned] = useStoredBoolean(STORAGE_KEY_SIDE_PANEL_PINNED, false);
+  const pinnedSidePanelTabRef = useRef<SidePanelTab>('scripts');
 
   // The host to pass to the SFTP panel - stored when the user opens SFTP
   const [sftpHostForTab, setSftpHostForTab] = useState<Map<string, Host>>(new Map());
@@ -1346,6 +1353,10 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
         ? null
         : current
     ));
+    // Unpin before closing when pinned (close button also unpins)
+    if (isSidePanelPinned) {
+      setIsSidePanelPinned(false);
+    }
     const sessionIdToRefocus = getActiveTerminalSessionId();
     syncWorkspaceFocusIfNeeded(sessionIdToRefocus);
     closeTerminalSidePanelTab(activeTabId);
@@ -1641,7 +1652,42 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
     });
   }, [handleCloseSidePanel, markSidePanelSubTabOpened, setSidePanelOpenTabs, sidePanelOpenTabsRef]);
 
-  // Toggle the whole side panel (new ⌘/Ctrl+\ shortcut). Close if open; if
+  // Toggle the pin state for the side panel
+  const handleTogglePin = useCallback(() => {
+    setIsSidePanelPinned(prev => {
+      const next = !prev;
+      // When pinning, record the current panel tab as the pinned tab
+      if (next) {
+        const tabId = activeTabIdRef.current;
+        if (tabId) {
+          const currentTab = sidePanelOpenTabsRef.current.get(tabId);
+          if (currentTab) pinnedSidePanelTabRef.current = currentTab;
+        }
+      }
+      return next;
+    });
+    // Ensure panel is open when pinning
+    if (!isSidePanelPinned) {
+      const tabId = activeTabIdRef.current;
+      if (tabId && !sidePanelOpenTabsRef.current.has(tabId)) {
+        const sftpAvailable = !!resolveSftpHostForTab(tabId);
+        const fallback: SidePanelTab = sftpAvailable ? 'sftp' : 'scripts';
+        const lastTab = lastSidePanelTabRef.current.get(tabId) ?? pinnedSidePanelTabRef.current;
+        const target: SidePanelTab = lastTab && lastTab !== 'sftp' ? lastTab
+          : sftpAvailable ? 'sftp' : 'scripts';
+        markSidePanelSubTabOpened(tabId, target);
+        startTransition(() => {
+          setSidePanelOpenTabs(prev => {
+            const next = new Map(prev);
+            next.set(tabId, fallback);
+            return next;
+          });
+        });
+      }
+    }
+  }, [isSidePanelPinned, markSidePanelSubTabOpened, resolveSftpHostForTab]);
+
+  // When switching tabs while pinned, auto-open the side panel
   // closed, reopen the tab's last sub-panel, defaulting to SFTP (when a host is
   // available) or scripts.
   const handleToggleSidePanel = useCallback(() => {
@@ -2169,6 +2215,8 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
     Palette,
     PanelLeft,
     PanelRight,
+    Pin,
+    PinOff,
     cn,
     collectSessionIds,
     customAccent,
@@ -2244,6 +2292,7 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
     handleToggleAiFromTopBar,
     handleToggleScriptsSidePanel,
     handleToggleSidePanel,
+    handleTogglePin,
     handleToggleSftpFromBar,
     handleToggleWorkspaceComposeBar,
     handleUpdateHost,
@@ -2259,6 +2308,7 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
     identities,
     isBroadcastEnabled,
     isComposeBarOpen,
+    isSidePanelPinned,
     keyBindings,
     keys,
     knownHosts,
@@ -2397,6 +2447,27 @@ const TerminalLayerInner: React.FC<TerminalLayerProps> = ({
     focusedSessionIdRef,
     setSidePanelPosition,
   };
+
+  // Auto-open side panel when switching tabs while pinned
+  const activeTabIdForPin = useActiveTabId();
+  useEffect(() => {
+    if (!isSidePanelPinned || !activeTabIdForPin) return;
+    // If the panel is already open for this tab, keep it
+    if (sidePanelOpenTabs.has(activeTabIdForPin)) return;
+    const sftpAvailable = !!resolveSftpHostForTab(activeTabIdForPin);
+    const target: SidePanelTab = pinnedSidePanelTabRef.current === 'sftp' && !sftpAvailable
+      ? 'scripts'
+      : pinnedSidePanelTabRef.current;
+    markSidePanelSubTabOpened(activeTabIdForPin, target);
+    startTransition(() => {
+      setSidePanelOpenTabs(prev => {
+        const next = new Map(prev);
+        next.set(activeTabIdForPin, target);
+        return next;
+      });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabIdForPin, isSidePanelPinned]);
 
   return <TerminalLayerTabBridge stableRef={stableRef} />;
 };

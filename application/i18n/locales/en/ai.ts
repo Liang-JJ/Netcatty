@@ -575,6 +575,8 @@ export const enAiMessages: Messages = {
   'terminal.layer.splitHorizontal': 'Split top and bottom',
   'terminal.layer.splitVertical': 'Split left and right',
   'terminal.layer.openInNewSplit': 'Open in new split',
+  'terminal.layer.pinPanel': 'Pin panel',
+  'terminal.layer.unpinPanel': 'Unpin panel',
   'terminal.layer.hostTree.search': 'Search hosts...',
   'terminal.layer.hostTree.searchButton': 'Search',
   'terminal.layer.hostTree.tagsButton': 'Filter by tags',

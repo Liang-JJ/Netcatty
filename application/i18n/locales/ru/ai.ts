@@ -527,6 +527,8 @@ export const ruAiMessages: Messages = {
   'terminal.layer.splitHorizontal': 'Разделить сверху и снизу',
   'terminal.layer.splitVertical': 'Разделить слева и справа',
   'terminal.layer.openInNewSplit': 'Открыть в новой области',
+  'terminal.layer.pinPanel': 'Закрепить панель',
+  'terminal.layer.unpinPanel': 'Открепить панель',
   'terminal.layer.hostTree.search': 'Поиск хостов...',
   'terminal.layer.hostTree.searchButton': 'Поиск',
   'terminal.layer.hostTree.tagsButton': 'Фильтр по тегам',

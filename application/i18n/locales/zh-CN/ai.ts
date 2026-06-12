@@ -575,6 +575,8 @@ export const zhCNAiMessages: Messages = {
   'terminal.layer.splitHorizontal': '上下分屏',
   'terminal.layer.splitVertical': '左右分屏',
   'terminal.layer.openInNewSplit': '在新分屏中打开',
+  'terminal.layer.pinPanel': '固定面板',
+  'terminal.layer.unpinPanel': '取消固定',
   'terminal.layer.hostTree.search': '搜索主机...',
   'terminal.layer.hostTree.searchButton': '搜索',
   'terminal.layer.hostTree.tagsButton': '按标签筛选',
