@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Activity, FolderTree, History, MessageSquare, NotebookText, Palette, PanelLeft, PanelRight, Play, X } from 'lucide-react';
+import { Activity, FolderTree, History, MessageSquare, NotebookText, Palette, PanelLeft, PanelRight, Pin, PinOff, Play, X } from 'lucide-react';
 import {
   buildSidePanelChromeThemeFromTerminalTheme,
   buildTerminalSidePanelCssVars,
@@ -110,6 +110,7 @@ function TerminalLayerSidePanelInner({ ctx }: { ctx: SidePanelContext }) {
     cn,
     followAppTerminalTheme,
     handleCloseSidePanel,
+    handleTogglePin,
     handleOpenAI,
     handleOpenHistory,
     handleOpenNotes,
@@ -123,6 +124,7 @@ function TerminalLayerSidePanelInner({ ctx }: { ctx: SidePanelContext }) {
     persistSidePanelWidth,
     sidePanelPosition,
     sidePanelWidth,
+    isSidePanelPinned,
     t,
     terminalTheme,
   } = ctx;
@@ -485,6 +487,26 @@ function TerminalLayerSidePanelInner({ ctx }: { ctx: SidePanelContext }) {
                 </div>
               </ToolbarOverflowMenu>
               <div className="flex-1" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Btn
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 rounded-md p-0 hover:bg-transparent"
+                    style={{
+                      color: isSidePanelPinned
+                        ? sidePanelTheme.accent
+                        : sidePanelTheme.mutedFg,
+                    }}
+                    onClick={handleTogglePin}
+                  >
+                    {isSidePanelPinned ? <Pin size={15} /> : <PinOff size={15} />}
+                  </Btn>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {isSidePanelPinned ? t('terminal.layer.unpinPanel') : t('terminal.layer.pinPanel')}
+                </TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Btn
