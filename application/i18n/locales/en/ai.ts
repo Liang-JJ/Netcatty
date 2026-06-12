@@ -315,6 +315,8 @@ export const enAiMessages: Messages = {
   'terminal.layer.movePanelLeft': 'Move panel to left',
   'terminal.layer.movePanelRight': 'Move panel to right',
   'terminal.layer.closePanel': 'Close panel',
+  'terminal.layer.pinPanel': 'Pin panel',
+  'terminal.layer.unpinPanel': 'Unpin panel',
   'terminal.layer.hostTree.search': 'Search hosts...',
   'terminal.layer.hostTree.searchButton': 'Search',
   'terminal.layer.hostTree.tagsButton': 'Filter by tags',

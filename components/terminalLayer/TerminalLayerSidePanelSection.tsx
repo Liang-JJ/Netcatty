@@ -90,6 +90,8 @@ function TerminalLayerSidePanelTabBody({ ctx }: { ctx: SidePanelContext }) {
     handleHistoryPaste,
     handleHistoryRun,
     handleOpenHistory,
+    handleTogglePin,
+    isSidePanelPinned,
     handleFontFamilyChangeForFocusedSession,
     handleFontFamilyResetForFocusedSession,
     handleFontSizeChangeForFocusedSession,
@@ -407,6 +409,28 @@ function TerminalLayerSidePanelTabBody({ ctx }: { ctx: SidePanelContext }) {
                 <TooltipContent>{t('terminal.layer.aiChat')}</TooltipContent>
               </Tooltip>
               <div className="flex-1" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Btn
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 rounded-md p-0 hover:bg-transparent"
+                    style={{
+                      color: isSidePanelPinned
+                        ? 'var(--terminal-sidepanel-accent)'
+                        : 'var(--terminal-sidepanel-muted)',
+                    }}
+                    onClick={handleTogglePin}
+                  >
+                    {ctx.Pin && ctx.PinOff ? (
+                      isSidePanelPinned ? <ctx.Pin size={15} /> : <ctx.PinOff size={15} />
+                    ) : null}
+                  </Btn>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isSidePanelPinned ? t('terminal.layer.unpinPanel') : t('terminal.layer.pinPanel')}
+                </TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Btn

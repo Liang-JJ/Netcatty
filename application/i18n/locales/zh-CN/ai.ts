@@ -315,6 +315,8 @@ export const zhCNAiMessages: Messages = {
   'terminal.layer.movePanelLeft': '面板移至左侧',
   'terminal.layer.movePanelRight': '面板移至右侧',
   'terminal.layer.closePanel': '关闭面板',
+  'terminal.layer.pinPanel': '固定面板',
+  'terminal.layer.unpinPanel': '取消固定',
   'terminal.layer.hostTree.search': '搜索主机...',
   'terminal.layer.hostTree.searchButton': '搜索',
   'terminal.layer.hostTree.tagsButton': '按标签筛选',
