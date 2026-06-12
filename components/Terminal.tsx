@@ -1486,6 +1486,17 @@ const TerminalComponent: React.FC<TerminalProps> = ({
     restoreCwdIntentRef.current = intent;
   }, [pendingInitialCwd, host.protocol, host.moshEnabled, host.etEnabled, shellType, isNetworkDevice]);
 
+  // Restore keyboard input after the connection dialog closes without stealing
+  // focus from a different visible tab or pane.
+  useEffect(() => {
+    if (status === "connected" && isVisibleRef.current && termRef.current) {
+      const timer = setTimeout(() => {
+        if (isVisibleRef.current) termRef.current?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
+
   const handleTerminalDataCaptureOnce = useCallback((
     capturedSessionId: string,
     data: string,
