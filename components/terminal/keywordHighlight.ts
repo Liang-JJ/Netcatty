@@ -345,11 +345,6 @@ export class KeywordHighlighter implements IDisposable {
     }
     // Re-check state: may have changed since the refresh was scheduled
     if (!this.enabled || this.compiledRules.length === 0) return;
-    if (this.term.buffer.active.type === 'alternate') {
-      this.cancelScrollRefresh();
-      if (this.lineDecorations.size > 0) this.clearDecorations();
-      return;
-    }
     this.lastRefreshTime = performance.now();
     const reason = this.pendingRefreshReason;
     this.pendingRefreshReason = "write";
@@ -503,14 +498,10 @@ export class KeywordHighlighter implements IDisposable {
     }
     this.pendingRefreshReason = this.mergeRefreshReason(this.pendingRefreshReason, reason);
 
-    // Optimization: Disable highlighting in Alternate Buffer (e.g. Vim, Htop)
-    // These apps manage their own highlighting and have rapid repaints.
-    if (this.term.buffer.active.type === 'alternate') {
-      if (this.lineDecorations.size > 0) {
-        this.clearDecorations();
-      }
-      return;
-    }
+    // NOTE: We intentionally do NOT disable highlighting in the alternate
+    // buffer. less/more use the alternate buffer but do not manage their own
+    // highlighting, so users still need keyword highlighting when reading logs.
+    // vim/htop repaints are throttled by the debounce + rAF logic below.
 
     const now = performance.now();
     if (this.shouldDeferRefreshForWriteBurst(mode, reason, now)) {
@@ -1273,7 +1264,7 @@ export class KeywordHighlighter implements IDisposable {
   private runScrollRefreshChunk(generation: number) {
     const job = this.scrollRefreshJob;
     if (!job || job.generation !== generation) return;
-    if (!this.enabled || this.compiledRules.length === 0 || this.term.buffer.active.type === "alternate") {
+    if (!this.enabled || this.compiledRules.length === 0) {
       this.cancelScrollRefresh();
       return;
     }
