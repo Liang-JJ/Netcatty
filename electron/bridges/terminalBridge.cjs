@@ -16,7 +16,12 @@ const { ensureNodePtySpawnHelperExecutable } = require("./nodePtySpawnHelperPerm
 ensureNodePtySpawnHelperExecutable();
 
 const pty = require("node-pty");
-const { SerialPort } = require("serialport");
+let SerialPort = null;
+try {
+  SerialPort = require("serialport").SerialPort;
+} catch (err) {
+  console.warn("[Serial] serialport native module not available on this platform:", err.message);
+}
 const {
   configureTerminalSessionDataEmitter,
   emitTerminalSessionData,
@@ -610,6 +615,9 @@ const {
  * List available serial ports (hardware only)
  */
 async function listSerialPorts() {
+  if (!SerialPort) {
+    return [];
+  }
   try {
     const ports = await SerialPort.list();
     return ports.map(port => ({
@@ -632,6 +640,9 @@ async function listSerialPorts() {
  * Note: SerialPort library can open PTY devices directly, they just won't appear in list()
  */
 async function startSerialSession(event, options) {
+  if (!SerialPort) {
+    throw new Error("Serial port native module is not available on this platform.");
+  }
   const sessionId = options.sessionId || randomUUID();
 
   const portPath = options.path;
