@@ -113,15 +113,6 @@ export class KeywordHighlighter implements IDisposable {
   private triggerRefresh(mode: "immediate" | "debounced") {
     if (!this.enabled || this.compiledRules.length === 0) return;
 
-    // Optimization: Disable highlighting in Alternate Buffer (e.g. Vim, Htop)
-    // These apps manage their own highlighting and have rapid repaints.
-    if (this.term.buffer.active.type === 'alternate') {
-      if (this.decorations.length > 0) {
-        this.clearDecorations();
-      }
-      return;
-    }
-
     if (mode === "immediate") {
       // Throttle: skip if a rAF is already pending.
       // Don't clear the debounce timer here — in a hidden tab rAF never
@@ -182,10 +173,6 @@ export class KeywordHighlighter implements IDisposable {
     }
     // Re-check state: may have changed since the refresh was scheduled
     if (!this.enabled || this.compiledRules.length === 0) return;
-    if (this.term.buffer.active.type === 'alternate') {
-      if (this.decorations.length > 0) this.clearDecorations();
-      return;
-    }
     this.lastRefreshTime = performance.now();
     this.refreshViewport();
   }
