@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+<<<<<<< HEAD
 import { Activity, FolderTree, History, MessageSquare, NotebookText, Palette, PanelLeft, PanelRight, Play, X } from 'lucide-react';
+=======
+import { Activity, FolderTree, History, MessageSquare, NotebookText, Palette, PanelLeft, PanelRight, Pin, PinOff, X, Zap } from 'lucide-react';
+>>>>>>> 7d9fb8f5 (feat: add pin button to session side panel for cross-tab persistence)
 import { buildSidePanelChromeThemeFromTerminalTheme } from '../../infrastructure/theme/terminalAppearanceTokens';
 import { injectTerminalLayerChromeSurfaceVars } from '../../infrastructure/theme/terminalAppearanceVars';
 import React, { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -92,6 +96,8 @@ function TerminalLayerSidePanelInner({ ctx }: { ctx: SidePanelContext }) {
     cn,
     followAppTerminalTheme,
     handleCloseSidePanel,
+    handleTogglePin,
+    isSidePanelPinned,
     handleOpenAI,
     handleOpenHistory,
     handleOpenNotes,
@@ -358,6 +364,26 @@ function TerminalLayerSidePanelInner({ ctx }: { ctx: SidePanelContext }) {
               );
             })}
             <div className="flex-1" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Btn
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-md p-0 hover:bg-transparent"
+                  style={{
+                    color: isSidePanelPinned
+                      ? sidePanelTheme.accent
+                      : sidePanelTheme.mutedFg,
+                  }}
+                  onClick={handleTogglePin}
+                >
+                  {isSidePanelPinned ? <Pin size={15} /> : <PinOff size={15} />}
+                </Btn>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isSidePanelPinned ? t('terminal.layer.unpinPanel') : t('terminal.layer.pinPanel')}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Btn
