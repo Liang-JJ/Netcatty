@@ -55,6 +55,15 @@ function registerProviderHandlers(ctx) {
     return { ok: true };
   });
 
+  ipcMain.handle("netcatty:ai:sync-http-proxy", async (event, { config }) => {
+    if (!validateSenderOrSettings(event)) return { ok: false, error: "Unauthorized IPC sender" };
+    try {
+      return await aiProxyRuntime.syncConfig(config);
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+
   /**
    * Inject the decrypted web search API key into request headers.
    * Replaces __WEB_SEARCH_KEY__ placeholder, similar to __IPC_SECURED__ for providers.
@@ -68,6 +77,32 @@ function registerProviderHandlers(ctx) {
       patched[k] = typeof v === "string" ? v.replace(WEB_SEARCH_KEY_PLACEHOLDER, realKey) : v;
     }
     return patched;
+  }
+
+  async function readResponseTextWithLimit(response, maxBytes) {
+    if (!response?.body?.getReader) {
+      const text = await response.text();
+      if (Buffer.byteLength(text) > maxBytes) {
+        throw new Error(`Response body exceeded maximum size (${Math.floor(maxBytes / (1024 * 1024))}MB)`);
+      }
+      return text;
+    }
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let totalSize = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      totalSize += chunk.length;
+      if (totalSize > maxBytes) {
+        try { await reader.cancel(); } catch {}
+        throw new Error(`Response body exceeded maximum size (${Math.floor(maxBytes / (1024 * 1024))}MB)`);
+      }
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString();
   }
 
   // Temporarily add a host to the fetch allowlist (used by settings model listing).
@@ -346,9 +381,105 @@ function registerProviderHandlers(ctx) {
       }
 
       const skipTLS = shouldSkipTLSVerify(providerId);
-      const { statusCode, statusText } = await streamRequest(resolvedUrl, { method: "POST", headers: resolvedHeaders, body }, event, requestId, skipTLS);
+      const controller = new AbortController();
+      activeStreams.set(requestId, controller);
+
+      const response = await aiProxyRuntime.fetch(
+        resolvedUrl,
+        {
+          method: "POST",
+          headers: resolvedHeaders,
+          body,
+          redirect: "manual",
+          signal: controller.signal,
+        },
+        { skipTlsVerify: skipTLS },
+      );
+      const statusCode = response.status || 0;
+      const statusText = response.statusText || "";
+
+      if (statusCode < 200 || statusCode >= 300) {
+        let errorBody = "";
+        try {
+          errorBody = await readResponseTextWithLimit(response, 10 * 1024 * 1024);
+        } catch (readErr) {
+          errorBody = readErr?.message || String(readErr);
+        }
+
+        let errorDetail = statusText;
+        try {
+          const parsed = JSON.parse(errorBody);
+          errorDetail = parsed?.error?.message || parsed?.message || parsed?.detail || errorBody.slice(0, 500);
+        } catch {
+          if (String(errorBody).trim()) errorDetail = String(errorBody).slice(0, 500);
+        }
+        safeSend(event.sender, "netcatty:ai:stream:error", {
+          requestId,
+          error: `HTTP ${statusCode}: ${errorDetail}`,
+        });
+        activeStreams.delete(requestId);
+        return { ok: true, statusCode, statusText: `${statusCode} ${errorDetail}` };
+      }
+
+      const pump = async () => {
+        let buffer = "";
+        const reader = response.body?.getReader?.();
+        if (!reader) {
+          const text = await readResponseTextWithLimit(response, 10 * 1024 * 1024);
+          if (text.trim()) {
+            safeSend(event.sender, "netcatty:ai:stream:data", { requestId, data: text.trim() });
+          }
+          safeSend(event.sender, "netcatty:ai:stream:end", { requestId });
+          return;
+        }
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += Buffer.from(value).toString();
+          if (buffer.length > 10 * 1024 * 1024) {
+            throw new Error("Stream buffer exceeded maximum size (10MB)");
+          }
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data: ")) {
+              safeSend(event.sender, "netcatty:ai:stream:data", {
+                requestId,
+                data: trimmed.slice(6),
+              });
+            }
+          }
+        }
+
+        if (buffer.trim().startsWith("data: ")) {
+          safeSend(event.sender, "netcatty:ai:stream:data", {
+            requestId,
+            data: buffer.trim().slice(6),
+          });
+        }
+        safeSend(event.sender, "netcatty:ai:stream:end", { requestId });
+      };
+
+      void pump()
+        .catch((err) => {
+          if (controller.signal.aborted) {
+            safeSend(event.sender, "netcatty:ai:stream:end", { requestId });
+            return;
+          }
+          safeSend(event.sender, "netcatty:ai:stream:error", {
+            requestId,
+            error: err?.message || String(err),
+          });
+        })
+        .finally(() => {
+          activeStreams.delete(requestId);
+        });
+
       return { ok: true, statusCode, statusText };
     } catch (err) {
+      activeStreams.delete(requestId);
       return { ok: false, error: err?.message || String(err) };
     }
   });
@@ -397,60 +528,39 @@ function registerProviderHandlers(ctx) {
     const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10MB safety limit
     const MAX_REDIRECTS = followRedirects ? 5 : 0;
 
-    function doFetch(fetchUrl, redirectsLeft) {
-      return new Promise((resolve) => {
-        const parsedUrl = new URL(fetchUrl);
-        const isHttps = parsedUrl.protocol === "https:";
-        const lib = isHttps ? https : http;
-
-        const fetchOpts = { method: method || "GET", headers: resolvedHeaders || {}, timeout: 30000 };
-        if ((skipTLSVerify || shouldSkipTLSVerify(providerId)) && isHttps) fetchOpts.rejectUnauthorized = false;
-        const req = lib.request(parsedUrl, fetchOpts,
-          (res) => {
-            // Handle redirects
-            if (redirectsLeft > 0 && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-              const location = new URL(res.headers.location, fetchUrl).href;
-              res.resume(); // drain the response
-              // Revalidate the redirect target hostname (blocks localhost/metadata etc.)
-              if (!isAllowedFetchUrl(location, !!skipHostCheck)) {
-                resolve({ ok: false, status: 0, data: "", error: "Redirect target is not allowed" });
-                return;
-              }
-              resolve(doFetch(location, redirectsLeft - 1));
-              return;
-            }
-            let data = "";
-            let totalSize = 0;
-            res.on("data", (chunk) => {
-              totalSize += chunk.length;
-              if (totalSize > MAX_RESPONSE_SIZE) {
-                req.destroy();
-                resolve({ ok: false, status: 0, data: "", error: "Response body exceeded maximum size (10MB)" });
-                return;
-              }
-              data += chunk.toString();
-            });
-            res.on("end", () => {
-              resolve({
-                ok: res.statusCode >= 200 && res.statusCode < 300,
-                status: res.statusCode,
-                data,
-              });
-            });
-          }
+    async function doFetch(fetchUrl, redirectsLeft) {
+      try {
+        const response = await aiProxyRuntime.fetch(
+          fetchUrl,
+          {
+            method: method || "GET",
+            headers: resolvedHeaders || {},
+            body,
+            redirect: "manual",
+          },
+          { skipTlsVerify: Boolean(skipTLSVerify || shouldSkipTLSVerify(providerId)) },
         );
 
-        req.on("error", (err) => {
-          resolve({ ok: false, status: 0, data: "", error: err.message });
-        });
-        req.on("timeout", () => {
-          req.destroy();
-          resolve({ ok: false, status: 0, data: "", error: "Request timeout" });
-        });
+        if (redirectsLeft > 0 && response.status >= 300 && response.status < 400) {
+          const locationHeader = response.headers?.get?.("location");
+          if (locationHeader) {
+            const location = new URL(locationHeader, fetchUrl).href;
+            if (!isAllowedFetchUrl(location, !!skipHostCheck)) {
+              return { ok: false, status: 0, data: "", error: "Redirect target is not allowed" };
+            }
+            return doFetch(location, redirectsLeft - 1);
+          }
+        }
 
-        if (body) req.write(body);
-        req.end();
-      });
+        const data = await readResponseTextWithLimit(response, MAX_RESPONSE_SIZE);
+        return {
+          ok: response.status >= 200 && response.status < 300,
+          status: response.status,
+          data,
+        };
+      } catch (err) {
+        return { ok: false, status: 0, data: "", error: err?.message || String(err) };
+      }
     }
 
     return doFetch(resolvedUrl, MAX_REDIRECTS);

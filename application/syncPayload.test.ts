@@ -154,6 +154,25 @@ test("terminal selection AI preference is syncable for auto-sync detection", () 
   );
 });
 
+test("buildSyncPayload excludes local-only AI HTTP proxy settings", () => {
+  localStorage.setItem(storageKeys.STORAGE_KEY_AI_HTTP_PROXY, JSON.stringify({
+    mode: "custom",
+    custom: {
+      scheme: "http",
+      host: "proxy.example.com",
+      port: 8080,
+      username: "alice",
+      password: "enc:v1:secret",
+    },
+  }));
+
+  const payload = buildSyncPayload(vault([]));
+
+  assert.equal("httpProxyConfig" in (payload.settings?.ai ?? {}), false);
+  assert.equal(JSON.stringify(payload).includes("proxy.example.com"), false);
+});
+});
+
 test("buildSyncPayload includes host tree sidebar visibility setting", () => {
   localStorage.setItem(storageKeys.STORAGE_KEY_SHOW_HOST_TREE_SIDEBAR, "false");
 

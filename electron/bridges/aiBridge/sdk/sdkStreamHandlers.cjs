@@ -183,6 +183,7 @@ function registerSdkStreamHandlers(ctx) {
         const emitter = createStreamEmitter({ safeSend, sender: event.sender, requestId });
         try {
           const shellEnv = await getShellEnv();
+          const proxyEnv = await aiProxyRuntime.getAgentProxyEnv();
           const effectiveMode = normalizeToolIntegrationMode(toolIntegrationMode);
           setToolIntegrationMode(effectiveMode);
 
@@ -205,6 +206,7 @@ function registerSdkStreamHandlers(ctx) {
             requestedAgentEnv: normalizedAgentEnv,
             withCliDiscoveryEnv,
             normalizeClaudeCodeExecutableEnv: normalizeClaudeCodeExecutableEnvForSdk,
+            proxyEnv,
           });
           if (backendKey === "cursor") {
             logCursorApiKeySummary({ requestedAgentEnv: normalizedAgentEnv, shellEnv, env });
@@ -281,8 +283,9 @@ function registerSdkStreamHandlers(ctx) {
       const backendKey = resolveBackendKey(sdkBackend);
       if (!backendKey) return { ok: false, error: `Unknown SDK backend: ${sdkBackend}` };
 
-      // claude/copilot enumerate models via the SDK; codex has no catalog (its
-      // driver returns []), so the renderer falls back to curated presets.
+      // claude/copilot enumerate models via their SDKs; codex shells out to
+      // `codex debug models`. Any backend may still degrade to [] on timeout or
+      // failure so the renderer can fall back to curated presets.
       const cached = sdkModelCache.get(backendKey);
       if (cached && Date.now() - cached.at < MODEL_CACHE_TTL_MS) {
         return { ok: true, currentModelId: null, models: cached.models };
@@ -293,11 +296,13 @@ function registerSdkStreamHandlers(ctx) {
           return { ok: true, currentModelId: null, models: [] };
         }
         const shellEnv = await getShellEnv();
+        const proxyEnv = await aiProxyRuntime.getAgentProxyEnv();
         const env = buildSdkAgentEnv({
           shellEnv,
           requestedAgentEnv: normalizeAgentEnv(requestedAgentEnv),
           withCliDiscoveryEnv,
           normalizeClaudeCodeExecutableEnv: normalizeClaudeCodeExecutableEnvForSdk,
+          proxyEnv,
         });
         const binPath = resolveSdkBackendBinPath({
           backendKey,

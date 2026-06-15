@@ -5,6 +5,7 @@ import {
 } from '../../infrastructure/config/storageKeys';
 import type {
   AIDraft,
+  AIHttpProxyConfig,
   AIPanelView,
   AISession,
   AIPermissionMode,
@@ -24,6 +25,9 @@ import { emitAIStateChanged } from './aiStateEvents';
 /** Typed accessor for the Electron IPC bridge exposed on `window.netcatty`. */
 export interface AIBridge {
   aiSdkAgentCleanup?: (chatSessionId: string) => Promise<{ ok: boolean }>;
+  aiSyncProviders?: (providers: Array<{ id: string; providerId: string; apiKey?: string; baseURL?: string; enabled: boolean; skipTLSVerify?: boolean }>) => Promise<{ ok: boolean; error?: string }>;
+  aiSyncWebSearch?: (apiHost: string | null, apiKey: string | null) => Promise<{ ok: boolean; error?: string }>;
+  aiSyncHttpProxy?: (config: AIHttpProxyConfig) => Promise<{ ok: boolean; error?: string }>;
   aiMcpSetPermissionMode?: (mode: AIPermissionMode) => Promise<unknown> | unknown;
   aiMcpSetToolIntegrationMode?: (mode: AIToolIntegrationMode) => Promise<unknown> | unknown;
   aiMcpSetCommandBlocklist?: (blocklist: string[]) => Promise<unknown> | unknown;

@@ -504,22 +504,6 @@ const AIChatSidePanelActive: React.FC<AIChatSidePanelProps> = ({
     return subscribeUserSkillsStatusChanged(handleUserSkillsChanged);
   }, []);
 
-  useEffect(() => {
-    if (!isVisible) return;
-    const bridge = getNetcattyBridge();
-    if (bridge?.aiSyncProviders && providers.length > 0) {
-      void bridge.aiSyncProviders(providers);
-    }
-  }, [isVisible, providers]);
-
-  useEffect(() => {
-    if (!isVisible) return;
-    const bridge = getNetcattyBridge();
-    if (bridge?.aiSyncWebSearch) {
-      void bridge.aiSyncWebSearch(webSearchConfig?.apiHost || null, webSearchConfig?.apiKey || null);
-    }
-  }, [isVisible, webSearchConfig?.apiHost, webSearchConfig?.apiKey, webSearchConfig?.enabled]);
-
   const {
     discoveredAgents,
     isDiscovering,

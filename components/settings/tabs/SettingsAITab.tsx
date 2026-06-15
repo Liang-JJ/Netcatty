@@ -10,6 +10,7 @@
 import { AlertTriangle, Bot, FolderOpen, RefreshCcw } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AIHttpProxyConfig,
   AIPermissionMode,
   AIProviderId,
   AIToolIntegrationMode,
@@ -45,6 +46,7 @@ import { CopilotCliCard } from "./ai/CopilotCliCard";
 import { CodebuddyCard } from "./ai/CodebuddyCard";
 import { SafetySettings } from "./ai/SafetySettings";
 import { WebSearchSettings } from "./ai/WebSearchSettings";
+import { HttpProxySettings } from "./ai/HttpProxySettings";
 import { QuickMessagesSettings } from "./ai/QuickMessagesSettings";
 import type { AIQuickMessage } from "../../../infrastructure/ai/quickMessages";
 import { encryptField } from "../../../infrastructure/persistence/secureFieldAdapter";
@@ -87,7 +89,7 @@ function scheduleAfterFirstPaint(callback: () => void, delayMs = 0): () => void 
   };
 }
 
-type AISettingsSubTab = "providers" | "agents" | "tools" | "search" | "safety";
+type AISettingsSubTab = "providers" | "agents" | "tools" | "search" | "network" | "safety";
 
 function getSavedManagedAgentPathInfo(
   agents: ExternalAgentConfig[],
@@ -138,6 +140,8 @@ interface SettingsAITabProps {
   setMaxIterations: (value: number) => void;
   webSearchConfig: WebSearchConfig | null;
   setWebSearchConfig: (config: WebSearchConfig | null) => void;
+  aiHttpProxyConfig: AIHttpProxyConfig;
+  setAIHttpProxyConfig: (config: AIHttpProxyConfig) => void;
   quickMessages: AIQuickMessage[];
   setQuickMessages: (value: AIQuickMessage[] | ((prev: AIQuickMessage[]) => AIQuickMessage[])) => void;
   showTerminalSelectionAIAction: boolean;
@@ -173,6 +177,8 @@ const SettingsAITab: React.FC<SettingsAITabProps> = ({
   setMaxIterations,
   webSearchConfig,
   setWebSearchConfig,
+  aiHttpProxyConfig,
+  setAIHttpProxyConfig,
   quickMessages,
   setQuickMessages,
   showTerminalSelectionAIAction,
@@ -709,6 +715,7 @@ const SettingsAITab: React.FC<SettingsAITabProps> = ({
           <TabsTrigger value="agents">{t('ai.agents')}</TabsTrigger>
           <TabsTrigger value="tools">{t('ai.toolAccess.title')}</TabsTrigger>
           <TabsTrigger value="search">{t("ai.webSearch.title")}</TabsTrigger>
+          <TabsTrigger value="network">{t("ai.network.title")}</TabsTrigger>
           <TabsTrigger value="safety">{t('ai.safety.title')}</TabsTrigger>
         </TabsList>
 
@@ -1011,6 +1018,13 @@ const SettingsAITab: React.FC<SettingsAITabProps> = ({
           <WebSearchSettings
             webSearchConfig={webSearchConfig}
             setWebSearchConfig={setWebSearchConfig}
+          />
+        </TabsContent>
+
+        <TabsContent value="network" className="m-0 space-y-6">
+          <HttpProxySettings
+            aiHttpProxyConfig={aiHttpProxyConfig}
+            setAIHttpProxyConfig={setAIHttpProxyConfig}
           />
         </TabsContent>
 
