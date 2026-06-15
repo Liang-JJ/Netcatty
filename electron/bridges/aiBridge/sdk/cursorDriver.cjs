@@ -110,6 +110,45 @@ async function withTemporaryProcessEnv(env, fn) {
   }
 }
 
+function hasProxyEnv(env) {
+  if (!env || typeof env !== "object") return false;
+  return Boolean(
+    env.HTTP_PROXY
+    || env.HTTPS_PROXY
+    || env.ALL_PROXY
+    || env.http_proxy
+    || env.https_proxy
+    || env.all_proxy,
+  );
+}
+
+async function withTemporaryCursorProxyContext(env, fn, options = {}) {
+  const restoreEnv = applyTemporaryProcessEnv(env);
+  let restoreDispatcher = () => {};
+
+  try {
+    if (hasProxyEnv(env)) {
+      const undici = options.undiciModule || await import("undici");
+      if (typeof undici.setGlobalDispatcher === "function") {
+        const previousDispatcher = typeof undici.getGlobalDispatcher === "function"
+          ? undici.getGlobalDispatcher()
+          : null;
+        const nextDispatcher = options.proxyDispatcher || new undici.EnvHttpProxyAgent();
+        undici.setGlobalDispatcher(nextDispatcher);
+        restoreDispatcher = () => {
+          if (previousDispatcher && typeof undici.setGlobalDispatcher === "function") {
+            undici.setGlobalDispatcher(previousDispatcher);
+          }
+        };
+      }
+    }
+    return await fn();
+  } finally {
+    restoreDispatcher();
+    restoreEnv();
+  }
+}
+
 function buildCursorSendMessage(prompt, attachments) {
   const images = [];
   for (const attachment of Array.isArray(attachments) ? attachments : []) {
@@ -333,7 +372,7 @@ async function abortable(promise, signal, onLateResolve) {
 }
 
 async function runCursorTurn({
-  prompt, attachments, agentOptions, runtimeEnv, resumeSessionId, emitter, signal, sdkModule,
+  prompt, attachments, agentOptions, runtimeEnv, resumeSessionId, emitter, signal, sdkModule, undiciModule,
 }) {
   let resolvedModule = sdkModule;
   if (!resolvedModule) {
@@ -350,8 +389,7 @@ async function runCursorTurn({
   let run = null;
   let sessionId = resumeSessionId || null;
   try {
-    const restoreCreateEnv = applyTemporaryProcessEnv(runtimeEnv);
-    try {
+    return await withTemporaryCursorProxyContext(runtimeEnv, async () => {
       const createAgent = () => Agent.create(agentOptions);
       let agentPromise;
       if (resumeSessionId && typeof Agent.resume === "function") {
@@ -373,62 +411,56 @@ async function runCursorTurn({
       agent = await abortable(agentPromise, signal, (lateAgent) => {
         try { lateAgent?.close?.(); } catch { /* best effort */ }
       });
-    } finally {
-      restoreCreateEnv();
-    }
-    sessionId = agent.agentId || sessionId;
-    if (sessionId) emitter.sessionId(sessionId);
-    if (signal?.aborted) return { sessionId };
 
-    const sendMessage = buildCursorSendMessage(prompt, attachments);
-    const restoreSendEnv = applyTemporaryProcessEnv(runtimeEnv);
-    try {
+      sessionId = agent.agentId || sessionId;
+      if (sessionId) emitter.sessionId(sessionId);
+      if (signal?.aborted) return { sessionId };
+
+      const sendMessage = buildCursorSendMessage(prompt, attachments);
       run = await abortable(agent.send(sendMessage), signal, (lateRun) => {
         if (lateRun && typeof lateRun.cancel === "function") {
           void lateRun.cancel().catch(() => {});
         }
       });
-    } finally {
-      restoreSendEnv();
-    }
-    const state = { reasoningOpen: false };
-    let hasContent = false;
-    let failed = false;
-    const onAbort = () => {
-      if (run && typeof run.cancel === "function") {
-        void run.cancel().catch(() => {});
-      }
-    };
-    if (signal) {
-      if (signal.aborted) onAbort();
-      else signal.addEventListener("abort", onAbort, { once: true });
-    }
-    try {
-      for await (const event of run.stream()) {
-        if (signal?.aborted) break;
-        if (event?.type === "assistant" || event?.type === "tool_call") hasContent = true;
-        const streamFailed = translateCursorEvent(event, emitter, state);
-        if (streamFailed || state.failed) {
-          failed = true;
-          break;
+      const state = { reasoningOpen: false };
+      let hasContent = false;
+      let failed = false;
+      const onAbort = () => {
+        if (run && typeof run.cancel === "function") {
+          void run.cancel().catch(() => {});
         }
+      };
+      if (signal) {
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort, { once: true });
       }
-    } finally {
-      if (signal) signal.removeEventListener("abort", onAbort);
-    }
-    closeReasoning(state, emitter);
-    if (failed) {
-      if (isCursorAuthMessage(state.errorMessage)) {
-        await logCursorApiKeyValidation(resolvedModule, agentOptions?.apiKey);
+      try {
+        for await (const event of run.stream()) {
+          if (signal?.aborted) break;
+          if (event?.type === "assistant" || event?.type === "tool_call") hasContent = true;
+          const streamFailed = translateCursorEvent(event, emitter, state);
+          if (streamFailed || state.failed) {
+            failed = true;
+            break;
+          }
+        }
+      } finally {
+        if (signal) signal.removeEventListener("abort", onAbort);
       }
+      closeReasoning(state, emitter);
+      if (failed) {
+        if (isCursorAuthMessage(state.errorMessage)) {
+          await logCursorApiKeyValidation(resolvedModule, agentOptions?.apiKey);
+        }
+        return { sessionId };
+      }
+      if (!hasContent && !signal?.aborted) {
+        emitter.emitError("Cursor returned an empty response. Check the Cursor API Key in Settings -> AI.");
+        return { sessionId };
+      }
+      if (!signal?.aborted) emitter.emitDone();
       return { sessionId };
-    }
-    if (!hasContent && !signal?.aborted) {
-      emitter.emitError("Cursor returned an empty response. Check the Cursor API Key in Settings -> AI.");
-      return { sessionId };
-    }
-    if (!signal?.aborted) emitter.emitDone();
-    return { sessionId };
+    }, { undiciModule });
   } catch (error) {
     if (isCursorTurnAbortError(error) || signal?.aborted) {
       return { sessionId };
@@ -512,7 +544,7 @@ function mapCursorModels(models) {
   return out;
 }
 
-async function listCursorModels({ apiKey, env, sdkModule, abortController, signal } = {}) {
+async function listCursorModels({ apiKey, env, sdkModule, abortController, signal, undiciModule } = {}) {
   const externalSignal = signal || abortController?.signal;
   if (externalSignal?.aborted) return [];
   let resolvedModule = sdkModule;
@@ -521,23 +553,29 @@ async function listCursorModels({ apiKey, env, sdkModule, abortController, signa
   }
   const effectiveApiKey = apiKey || env?.CURSOR_API_KEY || process.env.CURSOR_API_KEY;
   if (!effectiveApiKey) return [];
-  let abortHandler;
-  try {
-    const result = await Promise.race([
-      Promise.resolve(resolvedModule.Cursor.models.list({
-        apiKey: effectiveApiKey,
-        signal: externalSignal,
-      })).then((models) => ({ type: "models", models })),
-      new Promise((resolve) => {
-        if (externalSignal?.aborted) return resolve({ type: "aborted" });
-        abortHandler = () => resolve({ type: "aborted" });
-        externalSignal?.addEventListener("abort", abortHandler, { once: true });
-      }),
-    ]);
-    return result.type === "models" ? mapCursorModels(result.models) : [];
-  } finally {
-    if (abortHandler) externalSignal?.removeEventListener("abort", abortHandler);
-  }
+  return await withTemporaryCursorProxyContext(
+    env,
+    async () => {
+      let abortHandler;
+      try {
+        const result = await Promise.race([
+          Promise.resolve(resolvedModule.Cursor.models.list({
+            apiKey: effectiveApiKey,
+            signal: externalSignal,
+          })).then((models) => ({ type: "models", models })),
+          new Promise((resolve) => {
+            if (externalSignal?.aborted) return resolve({ type: "aborted" });
+            abortHandler = () => resolve({ type: "aborted" });
+            externalSignal?.addEventListener("abort", abortHandler, { once: true });
+          }),
+        ]);
+        return result.type === "models" ? mapCursorModels(result.models) : [];
+      } finally {
+        if (abortHandler) externalSignal?.removeEventListener("abort", abortHandler);
+      }
+    },
+    { undiciModule },
+  );
 }
 
 module.exports = {
@@ -555,5 +593,6 @@ module.exports = {
   runCursorTurn,
   toCursorMcpServers,
   translateCursorEvent,
+  withTemporaryCursorProxyContext,
   withTemporaryProcessEnv,
 };

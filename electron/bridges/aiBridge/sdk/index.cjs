@@ -75,8 +75,9 @@ const DRIVER_REGISTRY = {
         signal: ctx.signal,
       });
     },
-    // codex-sdk exposes no model catalog; the UI falls back to curated presets.
-    async listModels() { return []; },
+    async listModels(ctx) {
+      return codex.listCodexModels({ cliPath: ctx.binPath, env: ctx.env });
+    },
   },
   copilot: {
     async runTurn(ctx) {

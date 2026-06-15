@@ -22,11 +22,11 @@ test("getDriver throws on unknown backend", () => {
   assert.throws(() => getDriver("gemini"), /No SDK driver registered for backend: gemini/);
 });
 
-test("SDK drivers expose listModels; codex returns [] (no catalog)", async () => {
+test("SDK drivers expose listModels; codex resolves to an array", async () => {
   for (const key of ["claude", "codebuddy", "codex", "copilot", "cursor", "grok", "opencode"]) {
     assert.equal(typeof getDriver(key).listModels, "function", `${key} must expose listModels`);
   }
-  assert.deepEqual(await getDriver("codex").listModels({}), []);
+  assert.ok(Array.isArray(await getDriver("codex").listModels({})));
 });
 
 test("CodeBuddy keeps V2 for SessionOptions fields and falls back for query-only fields", () => {

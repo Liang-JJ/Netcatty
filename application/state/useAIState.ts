@@ -19,6 +19,7 @@ import {
   STORAGE_KEY_AI_AGENT_PROVIDER_MAP,
   STORAGE_KEY_AI_AGENT_THINKING_MAP,
   STORAGE_KEY_AI_WEB_SEARCH,
+  STORAGE_KEY_AI_HTTP_PROXY,
   STORAGE_KEY_AI_QUICK_MESSAGES,
 } from '../../infrastructure/config/storageKeys';
 import type { AIQuickMessage } from '../../infrastructure/ai/quickMessages';
@@ -27,6 +28,7 @@ import type {
   AIDraft,
   AISessionContextCompaction,
   AISession,
+  AIHttpProxyConfig,
   AIPermissionMode,
   AIToolIntegrationMode,
   ProviderConfig,
@@ -37,11 +39,13 @@ import type {
   WebSearchConfig,
 } from '../../infrastructure/ai/types';
 import {
+  DEFAULT_AI_HTTP_PROXY_CONFIG,
   DEFAULT_COMMAND_BLOCKLIST,
   DEFAULT_COMMAND_TIMEOUT_SECONDS,
   DEFAULT_RESPONSE_IDLE_TIMEOUT_SECONDS,
   normalizeCommandTimeoutSeconds,
   normalizeResponseIdleTimeoutSeconds,
+  sanitizeAIHttpProxyConfig,
 } from '../../infrastructure/ai/types';
 import {
   activateDraftView,
@@ -214,6 +218,11 @@ export function useAIState() {
   const [webSearchConfig, setWebSearchConfigRaw] = useState<WebSearchConfig | null>(() =>
     localStorageAdapter.read<WebSearchConfig>(STORAGE_KEY_AI_WEB_SEARCH) ?? null
   );
+  const [aiHttpProxyConfig, setAIHttpProxyConfigRaw] = useState<AIHttpProxyConfig>(() =>
+    sanitizeAIHttpProxyConfig(
+      localStorageAdapter.read<AIHttpProxyConfig>(STORAGE_KEY_AI_HTTP_PROXY) ?? DEFAULT_AI_HTTP_PROXY_CONFIG,
+    )
+  );
 
   // ── Quick Messages (slash prompts) ──
   const [quickMessages, setQuickMessagesRaw] = useState<AIQuickMessage[]>(() =>
@@ -353,6 +362,14 @@ export function useAIState() {
     } else {
       localStorageAdapter.remove(STORAGE_KEY_AI_WEB_SEARCH);
     }
+    emitAIStateChanged(STORAGE_KEY_AI_WEB_SEARCH);
+  }, []);
+
+  const setAIHttpProxyConfig = useCallback((config: AIHttpProxyConfig) => {
+    const next = sanitizeAIHttpProxyConfig(config);
+    setAIHttpProxyConfigRaw(next);
+    localStorageAdapter.write(STORAGE_KEY_AI_HTTP_PROXY, next);
+    emitAIStateChanged(STORAGE_KEY_AI_HTTP_PROXY);
   }, []);
 
   const setQuickMessages = useCallback((value: AIQuickMessage[] | ((prev: AIQuickMessage[]) => AIQuickMessage[])) => {
@@ -578,6 +595,11 @@ export function useAIState() {
           case STORAGE_KEY_AI_WEB_SEARCH:
             setWebSearchConfigRaw(localStorageAdapter.read<WebSearchConfig>(STORAGE_KEY_AI_WEB_SEARCH) ?? null);
             break;
+          case STORAGE_KEY_AI_HTTP_PROXY:
+            setAIHttpProxyConfigRaw(sanitizeAIHttpProxyConfig(
+              localStorageAdapter.read<AIHttpProxyConfig>(STORAGE_KEY_AI_HTTP_PROXY) ?? DEFAULT_AI_HTTP_PROXY_CONFIG,
+            ));
+            break;
           case STORAGE_KEY_AI_QUICK_MESSAGES: {
             const messages = localStorageAdapter.read<unknown>(STORAGE_KEY_AI_QUICK_MESSAGES);
             setQuickMessagesRaw(sanitizeQuickMessages(messages));
@@ -647,6 +669,24 @@ export function useAIState() {
         : 'mcp';
     bridge?.aiMcpSetToolIntegrationMode?.(initialToolMode);
   }, []);
+
+  useEffect(() => {
+    const bridge = getAIBridge();
+    if (!bridge?.aiSyncProviders) return;
+    void bridge.aiSyncProviders(providers).catch(() => {});
+  }, [providers]);
+
+  useEffect(() => {
+    const bridge = getAIBridge();
+    if (!bridge?.aiSyncWebSearch) return;
+    void bridge.aiSyncWebSearch(webSearchConfig?.apiHost ?? null, webSearchConfig?.apiKey ?? null).catch(() => {});
+  }, [webSearchConfig]);
+
+  useEffect(() => {
+    const bridge = getAIBridge();
+    if (!bridge?.aiSyncHttpProxy) return;
+    void bridge.aiSyncHttpProxy(aiHttpProxyConfig).catch(() => {});
+  }, [aiHttpProxyConfig]);
 
   // ── Session CRUD ──
   const persistSessions = useCallback((next: AISession[]) => {
@@ -1266,6 +1306,8 @@ export function useAIState() {
     setAgentThinking,
     webSearchConfig,
     setWebSearchConfig,
+    aiHttpProxyConfig,
+    setAIHttpProxyConfig,
     quickMessages,
     setQuickMessages,
     // sessions / activeSessionIdMap / draftsByScope / panelViewByScope live in
@@ -1328,6 +1370,8 @@ export function useAIState() {
     setAgentThinking,
     webSearchConfig,
     setWebSearchConfig,
+    aiHttpProxyConfig,
+    setAIHttpProxyConfig,
     quickMessages,
     setQuickMessages,
     setActiveSessionId,

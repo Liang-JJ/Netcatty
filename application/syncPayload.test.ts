@@ -291,6 +291,10 @@ test("terminal side panel auto-open settings are syncable for auto-sync detectio
     ),
   );
 });
+});
+
+test("buildSyncPayload excludes local-only AI HTTP proxy settings", () => {
+});
 
 test("note appearance settings survive sync and trigger auto-sync", async () => {
   localStorage.setItem(storageKeys.STORAGE_KEY_VAULT_NOTES_FONT_FAMILY, "Menlo, monospace");

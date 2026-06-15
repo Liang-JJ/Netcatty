@@ -1,5 +1,7 @@
 "use strict";
 
+const { PROXY_ENV_KEYS, mergeNoProxyValues } = require("../proxyRuntime.cjs");
+
 /**
  * Env construction for SDK agent subprocesses.
  *
@@ -34,6 +36,8 @@ function isDangerousEnvKey(key) {
  *        netcatty helper that injects the tool-CLI discovery file path.
  * @param {(e:Record<string,string>)=>Record<string,string>} [args.normalizeClaudeCodeExecutableEnv]
  *        netcatty helper that rewrites CLAUDE_CODE_EXECUTABLE to a runnable path (claude only).
+ * @param {Record<string,string>} [args.proxyEnv]
+ *        Authoritative AI proxy env patch (overrides shell/requested proxy vars).
  * @returns {Record<string,string>}
  */
 function buildSdkAgentEnv({
@@ -41,6 +45,7 @@ function buildSdkAgentEnv({
   requestedAgentEnv,
   withCliDiscoveryEnv,
   normalizeClaudeCodeExecutableEnv,
+  proxyEnv,
 }) {
   const filteredShellEnv = {};
   if (shellEnv && typeof shellEnv === "object") {
@@ -60,7 +65,35 @@ function buildSdkAgentEnv({
     }
   }
 
+  const existingNoProxy = [
+    filteredShellEnv.NO_PROXY,
+    filteredShellEnv.no_proxy,
+    filteredRequested.NO_PROXY,
+    filteredRequested.no_proxy,
+  ];
+
+  if (proxyEnv && typeof proxyEnv === "object") {
+    for (const key of PROXY_ENV_KEYS) {
+      delete filteredShellEnv[key];
+      delete filteredRequested[key];
+    }
+  }
+
   let env = { ...filteredShellEnv, ...filteredRequested };
+  if (proxyEnv && typeof proxyEnv === "object") {
+    const mergedNoProxy = mergeNoProxyValues(
+      ...existingNoProxy,
+      proxyEnv.NO_PROXY,
+      proxyEnv.no_proxy,
+    );
+    env = {
+      ...env,
+      ...proxyEnv,
+      NO_PROXY: mergedNoProxy,
+      no_proxy: mergedNoProxy,
+      NODE_OPTIONS: "--use-env-proxy",
+    };
+  }
   if (typeof withCliDiscoveryEnv === "function") {
     env = withCliDiscoveryEnv(env);
   }

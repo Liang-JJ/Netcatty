@@ -5,6 +5,8 @@ const {
   buildCodexConstructorOptions,
   buildCodexThreadOptions,
   buildCodexPromptInput,
+  listCodexModels,
+  mapCodexModels,
   runCodexTurn,
   toCodexMcpConfig,
 } = require("./codexDriver.cjs");
@@ -394,6 +396,112 @@ test("reconnectable Codex stream errors keep the turn open for later output", as
   assert.deepEqual(events.filter((event) => event.k === "text"), [{ k: "text", t: "recovered answer" }]);
   assert.ok(events.some((event) => event.k === "done"));
   assert.equal(events.some((event) => event.k === "error"), false);
+});
+
+test("mapCodexModels keeps only visible models and preserves reasoning levels", () => {
+  const models = mapCodexModels({
+    models: [
+      {
+        slug: "gpt-5.4-mini",
+        display_name: "GPT-5.4-Mini",
+        visibility: "list",
+        supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
+        priority: 20,
+      },
+      {
+        slug: "codex-auto-review",
+        display_name: "Codex Auto Review",
+        visibility: "hide",
+        supported_reasoning_levels: [{ effort: "medium" }],
+        priority: 1,
+      },
+      {
+        slug: "gpt-5.5",
+        display_name: "GPT-5.5",
+        description: "Latest",
+        visibility: "list",
+        supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }],
+        priority: 10,
+      },
+    ],
+  });
+  assert.deepEqual(models, [
+    {
+      id: "gpt-5.5",
+      name: "GPT-5.5",
+      description: "Latest",
+      thinkingLevels: ["low", "medium", "high"],
+    },
+    {
+      id: "gpt-5.4-mini",
+      name: "GPT-5.4-Mini",
+      description: undefined,
+      thinkingLevels: ["low", "high"],
+    },
+  ]);
+});
+
+test("listCodexModels parses `codex debug models` output", async () => {
+  let captured = null;
+  const models = await listCodexModels({
+    cliPath: "/opt/homebrew/bin/codex",
+    env: { PATH: "/usr/bin" },
+    runCommand: async (command, args, options) => {
+      captured = { command, args, env: options.env, timeoutMs: options.timeoutMs };
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          models: [
+            {
+              slug: "gpt-5.5",
+              display_name: "GPT-5.5",
+              visibility: "list",
+              supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }],
+              priority: 1,
+            },
+            {
+              slug: "codex-auto-review",
+              display_name: "Codex Auto Review",
+              visibility: "hide",
+              priority: 2,
+            },
+          ],
+        }),
+        stderr: "",
+      };
+    },
+  });
+  assert.deepEqual(captured, {
+    command: "/opt/homebrew/bin/codex",
+    args: ["debug", "models"],
+    env: { PATH: "/usr/bin" },
+    timeoutMs: 10000,
+  });
+  assert.deepEqual(models, [
+    {
+      id: "gpt-5.5",
+      name: "GPT-5.5",
+      description: undefined,
+      thinkingLevels: ["low", "medium"],
+    },
+  ]);
+});
+
+test("listCodexModels degrades to [] on command failure", async () => {
+  assert.deepEqual(
+    await listCodexModels({
+      runCommand: async () => ({ exitCode: 1, stdout: "", stderr: "boom" }),
+    }),
+    [],
+  );
+  assert.deepEqual(
+    await listCodexModels({
+      runCommand: async () => {
+        throw new Error("spawn failed");
+      },
+    }),
+    [],
+  );
 });
 
 test("runCodexTurn captures+emits the thread id early so an aborted turn still resumes", async () => {
