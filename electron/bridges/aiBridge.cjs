@@ -28,6 +28,7 @@ const { registerProviderHandlers } = require("./aiBridge/providerHandlers.cjs"),
 const { createVaultAgentBridge } = require("./aiBridge/vaultAgentBridge.cjs");
 const { registerAgentDiscoveryHandlers } = require("./aiBridge/agentDiscoveryHandlers.cjs"), { registerAgentProcessHandlers } = require("./aiBridge/agentProcessHandlers.cjs"), { registerSdkStreamHandlers } = require("./aiBridge/sdk/sdkStreamHandlers.cjs");
 const { probeClaudeAuth, probeCopilotAuth, probeCodexAuth, probeCodebuddyAuth, probeCursorCliAuth } = require("./aiBridge/agentAuthProbes.cjs");
+const { createAiProxyRuntime } = require("./aiBridge/proxyRuntime.cjs");
 
 // ── Extracted modules ──
 const {
@@ -233,6 +234,7 @@ let mainWebContentsId = null;
 let cliDiscoveryFilePath = null;
 let registeredContext = null;
 let registeredVaultAgentBridge = null;
+let aiProxyRuntime = null;
 
 // Active streaming requests (for cancellation)
 const activeStreams = new Map();
@@ -386,6 +388,8 @@ function init(deps) {
   terminalWorkerManager = deps.terminalWorkerManager || null;
   cliDiscoveryFilePath = deps.cliDiscoveryFilePath || null;
   userDataDir = deps.userDataDir || null;
+  aiProxyRuntime = createAiProxyRuntime({ electronModule });
+  aiProxyRuntime.registerLoginHandler();
   mcpServerBridge.init({ sessions, sftpClients, electronModule, cliDiscoveryFilePath, terminalWorkerManager, transferBridge: deps.transferBridge });
 
   // Wire up main window getter for MCP approval IPC
@@ -881,6 +885,8 @@ function createHandlerContext(ipcMain) {
     set webSearchApiHost(value) { webSearchApiHost = value; },
     get webSearchApiKeyEncrypted() { return webSearchApiKeyEncrypted; },
     set webSearchApiKeyEncrypted(value) { webSearchApiKeyEncrypted = value; },
+    get aiProxyRuntime() { return aiProxyRuntime; },
+    set aiProxyRuntime(value) { aiProxyRuntime = value; },
     decryptApiKeyValue,
     resolveProviderApiKey,
     shouldSkipTLSVerify,

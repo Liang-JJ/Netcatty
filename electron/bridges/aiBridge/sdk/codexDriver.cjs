@@ -13,6 +13,8 @@
  * McpToolCallItem). `env` is also passed so the binary resolves on PATH. Live
  * smoke confirms end-to-end behavior.
  */
+const { spawn } = require("node:child_process");
+const { prepareCommandForSpawn, stripAnsi } = require("../../ai/shellUtils.cjs");
 const { mcpEnvPairsToObject } = require("./injectMcp.cjs");
 
 function isImageAttachment(attachment) {
@@ -94,6 +96,116 @@ function parseCodexModelSelection(model) {
     return { model: value.slice(0, slash), effort };
   }
   return { model: value || undefined, effort: undefined };
+}
+
+function mapCodexModels(payload) {
+  const rawModels = Array.isArray(payload?.models) ? payload.models : [];
+  return rawModels
+    .filter((model) =>
+      model &&
+      typeof model.slug === "string" &&
+      model.slug &&
+      model.visibility === "list",
+    )
+    .map((model) => ({
+      id: model.slug,
+      name: model.display_name || model.slug,
+      description: model.description,
+      thinkingLevels: Array.isArray(model.supported_reasoning_levels)
+        ? model.supported_reasoning_levels
+          .map((level) => (level && typeof level.effort === "string" ? level.effort : null))
+          .filter(Boolean)
+        : undefined,
+      priority: Number.isFinite(model.priority) ? Number(model.priority) : Number.MAX_SAFE_INTEGER,
+    }))
+    .sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name))
+    .map(({ priority: _priority, ...model }) => model);
+}
+
+async function runCodexCatalogCommand(command, args, options) {
+  if (typeof options?.runCommand === "function") {
+    return await options.runCommand(command, args, options);
+  }
+
+  return await new Promise((resolve, reject) => {
+    const spawnSpec = prepareCommandForSpawn(command, args || []);
+    const child = spawn(spawnSpec.command, spawnSpec.args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: options?.env || process.env,
+      shell: spawnSpec.shell,
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let timeoutId = null;
+    const timeoutMs = Number.isFinite(options?.timeoutMs) ? Number(options.timeoutMs) : 0;
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    child.once("close", (exitCode) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      resolve({
+        stdout: stripAnsi(stdout),
+        stderr: stripAnsi(stderr),
+        exitCode,
+      });
+    });
+
+    if (timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try { child.kill("SIGTERM"); } catch {}
+        const error = new Error(`Command timed out after ${timeoutMs}ms`);
+        error.code = "ETIMEDOUT";
+        reject(error);
+      }, timeoutMs);
+      if (typeof timeoutId.unref === "function") timeoutId.unref();
+    }
+  });
+}
+
+/**
+ * Fetch the visible Codex model catalog via `codex debug models`.
+ * The SDK itself only wraps `codex exec`, but the CLI exposes a JSON catalog
+ * that matches the interactive `/model` picker. We prefer that live source and
+ * let the renderer fall back to curated presets only if this probe fails.
+ * @param {object} args
+ * @param {string} [args.cliPath]
+ * @param {object} [args.env]
+ * @param {Function} [args.runCommand]
+ */
+async function listCodexModels({ cliPath, env, runCommand }) {
+  const command = cliPath || "codex";
+  try {
+    const result = await runCodexCatalogCommand(command, ["debug", "models"], {
+      env,
+      runCommand,
+      timeoutMs: 10000,
+    });
+    if (result.exitCode !== 0) {
+      return [];
+    }
+    return mapCodexModels(JSON.parse(result.stdout));
+  } catch {
+    return [];
+  }
 }
 
 function buildCodexThreadOptions({ cwd, model }) {
@@ -412,6 +524,8 @@ module.exports = {
   buildCodexThreadOptions,
   buildCodexPromptInput,
   parseCodexModelSelection,
+  listCodexModels,
+  mapCodexModels,
   translateCodexEvent,
   runCodexTurn,
   toCodexMcpConfig,

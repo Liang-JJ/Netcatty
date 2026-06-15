@@ -10,6 +10,7 @@ const {
   runCursorTurn,
   toCursorMcpServers,
   translateCursorEvent,
+  withTemporaryCursorProxyContext,
   withTemporaryProcessEnv,
 } = require("./cursorDriver.cjs");
 
@@ -93,6 +94,74 @@ test("withTemporaryProcessEnv restores env after async work", async () => {
   if (original !== undefined) process.env.NETCATTY_CURSOR_TEST_ENV = original;
 });
 
+test("withTemporaryCursorProxyContext restores env and dispatcher after success", async () => {
+  const originalProxy = process.env.HTTP_PROXY;
+  delete process.env.HTTP_PROXY;
+  const originalDispatcher = { name: "original" };
+  let currentDispatcher = originalDispatcher;
+  const undiciModule = {
+    EnvHttpProxyAgent: class EnvHttpProxyAgent {
+      constructor() {
+        this.name = "proxy-agent";
+      }
+    },
+    getGlobalDispatcher() {
+      return currentDispatcher;
+    },
+    setGlobalDispatcher(value) {
+      currentDispatcher = value;
+    },
+  };
+
+  await withTemporaryCursorProxyContext(
+    { HTTP_PROXY: "http://proxy.example.com:8080" },
+    async () => {
+      assert.equal(process.env.HTTP_PROXY, "http://proxy.example.com:8080");
+      assert.equal(currentDispatcher.name, "proxy-agent");
+    },
+    { undiciModule },
+  );
+
+  assert.equal(process.env.HTTP_PROXY, undefined);
+  assert.equal(currentDispatcher, originalDispatcher);
+  if (originalProxy !== undefined) process.env.HTTP_PROXY = originalProxy;
+});
+
+test("withTemporaryCursorProxyContext restores env and dispatcher after failure", async () => {
+  const originalProxy = process.env.HTTPS_PROXY;
+  delete process.env.HTTPS_PROXY;
+  const originalDispatcher = { name: "original" };
+  let currentDispatcher = originalDispatcher;
+  const undiciModule = {
+    EnvHttpProxyAgent: class EnvHttpProxyAgent {
+      constructor() {
+        this.name = "proxy-agent";
+      }
+    },
+    getGlobalDispatcher() {
+      return currentDispatcher;
+    },
+    setGlobalDispatcher(value) {
+      currentDispatcher = value;
+    },
+  };
+
+  await assert.rejects(
+    withTemporaryCursorProxyContext(
+      { HTTPS_PROXY: "http://proxy.example.com:8443" },
+      async () => {
+        throw new Error("boom");
+      },
+      { undiciModule },
+    ),
+    /boom/,
+  );
+
+  assert.equal(process.env.HTTPS_PROXY, undefined);
+  assert.equal(currentDispatcher, originalDispatcher);
+  if (originalProxy !== undefined) process.env.HTTPS_PROXY = originalProxy;
+});
+
 test("runCursorTurn exposes runtime env while creating and sending", async () => {
   const emitter = makeEmitter();
   const observed = [];
@@ -128,6 +197,60 @@ test("runCursorTurn exposes runtime env while creating and sending", async () =>
     ["create", "/tmp/discovery.json"],
     ["send", "/tmp/discovery.json"],
   ]);
+});
+
+test("runCursorTurn restores proxy dispatcher after cancellation", async () => {
+  const emitter = makeEmitter();
+  const originalProxy = process.env.HTTP_PROXY;
+  delete process.env.HTTP_PROXY;
+  const originalDispatcher = { name: "original" };
+  let currentDispatcher = originalDispatcher;
+  const undiciModule = {
+    EnvHttpProxyAgent: class EnvHttpProxyAgent {
+      constructor() {
+        this.name = "proxy-agent";
+      }
+    },
+    getGlobalDispatcher() {
+      return currentDispatcher;
+    },
+    setGlobalDispatcher(value) {
+      currentDispatcher = value;
+    },
+  };
+
+  let resolveCreate;
+  const sdkModule = {
+    Agent: {
+      create() {
+        return new Promise((resolve) => {
+          resolveCreate = resolve;
+        });
+      },
+    },
+  };
+
+  const controller = new AbortController();
+  const turnPromise = runCursorTurn({
+    prompt: "hi",
+    agentOptions: { apiKey: "key", model: { id: "composer-2.5" }, local: { cwd: "/repo" } },
+    runtimeEnv: { HTTP_PROXY: "http://proxy.example.com:8080" },
+    emitter,
+    signal: controller.signal,
+    sdkModule,
+    undiciModule,
+  });
+
+  controller.abort();
+  resolveCreate({
+    agentId: "agent-cancel",
+    close() {},
+  });
+  await turnPromise;
+
+  assert.equal(currentDispatcher, originalDispatcher);
+  assert.equal(process.env.HTTP_PROXY, undefined);
+  if (originalProxy !== undefined) process.env.HTTP_PROXY = originalProxy;
 });
 
 test("translateCursorEvent maps assistant, thinking, and tool events", () => {
