@@ -19,7 +19,9 @@ npx tsc --noEmit
 npm run pack:win-x64
 ```
 
-### Zmodem File Transfer
+### Zmodem File Transfer (v1.1.40 起已由上游提供)
+
+> 此功能已在上游 v1.1.40 合并，不再属于私有修改。以下架构说明供参考。
 - **Sentry pattern**: `electron/bridges/zmodemHelper.cjs` exports `createZmodemSentry(opts)` — wraps a session's data stream, detects ZMODEM headers, and routes bytes to the protocol handler or back to the terminal.
 - Transfers run entirely in the main process; the renderer only receives lightweight progress IPC events (`netcatty:zmodem:detect | progress | complete | error`).
 - **Upload flow**: `handleUpload()` opens a file dialog → sends files via `zmodem.js`. For drag-and-drop upload, the renderer sets pending file paths via `setPendingZmodemUpload(sessionId, paths)` IPC, then writes `rz -E\r` to the session. `handleUpload` checks `opts.pendingFilePaths` and skips the dialog when files are pre-set.
@@ -74,8 +76,11 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ## 私有修改清单
 
-> 每次 rebase 到上游新版本后，按此清单逐项验证/重新应用。
-> `git log --oneline v<upstream-tag>..HEAD` 查看需要 cherry-pick 的提交。
+> **维护规则**: 每次新增私有特性或同步上游主干后，都必须更新此清单。新增特性要写明涉及文件和关键符号；被上游吸收的特性要移除；rebase 基准 tag 要更新到最新。
+
+> 每次 rebase 后运行 `git log --oneline v<upstream-tag>..HEAD` 查看需保留的提交。
+
+### 当前 rebase 基准: v1.1.40
 
 ### 1. 一键登录 + 全键盘操作
 
@@ -96,20 +101,13 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 - 关键符号: `handleTogglePin`, `isSidePanelPinned`, `useActiveTabId`
 - **rebase 高频冲突**: `TerminalLayer.tsx` 上游频繁重构
 
-### 3. Zmodem 拖拽上传模式
-
-**涉及文件**: `components/Terminal.tsx`, `components/terminal/TerminalToolbar.tsx`, `components/terminal/TerminalView.tsx`, `components/terminal/hooks/useTerminalDragDrop.ts`
-
-- Zmodem 按钮切换拖拽上传模式，YMODEM 按钮保留（串口专用）
-- **rebase 注意**: `TerminalView.tsx` 上游频繁改动，我们只多传几个 prop，优先保留上游版本再补 prop
-
-### 4. less/more 中保留关键词高亮
+### 3. less/more 中保留关键词高亮
 
 **涉及文件**: `components/terminal/keywordHighlight.ts`
 
 - 移除 alternate buffer 中禁用高亮的逻辑
 
-### 5. 跨平台构建兼容
+### 4. 跨平台构建兼容
 
 **涉及文件**: `electron-builder.config.cjs`, `electron/bridges/terminalBridge.cjs`
 
@@ -118,18 +116,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 - `npm run pack:win-x64` 只构建 x64
 - **rebase 注意**: `electron-builder.config.cjs` 上游可能新增排除规则，合并时保留我们的 arch 变量
 
-### Rebase 操作备忘
-
-```bash
-git fetch origin --tags
-# 找到最新 tag
-git rebase v<new-tag>
-# 按 CLAUDE.md 的 "Fork Modifications" 章节逐一验证
-npm run lint && npm t
-npm run pack:mac && npm run pack:win-x64
-```
-
-### 6. AI 功能代理与 Codex 实时模型列表
+### 5. AI 功能代理与 Codex 实时模型列表
 
 **涉及文件**: `application/state/useAIState.ts`, `application/state/useAISettingsState.ts`, `components/settings/tabs/ai/HttpProxySettings.tsx`, `electron/bridges/aiBridge/proxyRuntime.cjs`, `electron/bridges/aiBridge.cjs`, `electron/preload/api.cjs`, `types/global/netcatty-bridge-ai.d.ts`, `infrastructure/ai/types.ts`
 
@@ -142,3 +129,16 @@ npm run pack:mac && npm run pack:win-x64
 - Codex 的模型列表不再依赖硬编码预设，而是直接调用 `codex debug models` 读取实时 JSON 目录。
 - 解析逻辑只保留 `visibility === "list"` 的模型，并把 `slug / display_name / supported_reasoning_levels` 映射到下拉可用的数据结构，和 Codex 当前可见模型保持一致。
 - `sdkStreamHandlers.cjs` 继续保留失败降级路径，实时查询失败时再回退到保守的 Codex 预设；`infrastructure/ai/types.ts` 里的 fallback 也收敛为 `GPT-5.5 / GPT-5.4 / GPT-5.4-Mini`。
+
+### Rebase 操作备忘
+
+当前基准: **v1.1.40**
+
+```bash
+git fetch origin --tags
+# 确认当前基准 tag，然后 rebase
+git rebase v<new-tag>
+# 按本文件私有修改清单逐项验证
+npm run lint && npm t
+npm run pack:mac && npm run pack:win-x64
+```
