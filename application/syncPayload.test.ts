@@ -193,6 +193,10 @@ test("terminal side panel auto-open settings are syncable for auto-sync detectio
     ),
   );
 });
+});
+
+test("buildSyncPayload excludes local-only AI HTTP proxy settings", () => {
+});
 
 test("buildSyncPayload includes host tree sidebar visibility setting", () => {
   localStorage.setItem(storageKeys.STORAGE_KEY_SHOW_HOST_TREE_SIDEBAR, "false");

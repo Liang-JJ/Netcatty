@@ -1,11 +1,7 @@
 import { FolderTree, History, MessageSquare, PanelLeft, PanelRight, Palette, Pin, PinOff, X, Zap } from 'lucide-react';
 import React, { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-<<<<<<< HEAD
-import { activeTabStore } from '../application/state/activeTabStore';
-import { getScriptRecordingSnapshot } from '../application/state/scriptRecordingStore.ts';
-=======
 import { activeTabStore, useActiveTabId } from '../application/state/activeTabStore';
->>>>>>> 7d9fb8f5 (feat: add pin button to session side panel for cross-tab persistence)
+import { getScriptRecordingSnapshot } from '../application/state/scriptRecordingStore.ts';
 import { canReuseTerminalConnection } from '../application/state/terminalConnectionReuse';
 import { resolveTerminalSessionExitIntent, type TerminalSessionExitEvent } from '../application/state/resolveTerminalSessionExitIntent';
 import { prewarmAIStateStorageSnapshots } from '../application/state/aiStateSnapshots';

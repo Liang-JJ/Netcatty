@@ -1,9 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-<<<<<<< HEAD
-import { Activity, FolderTree, History, MessageSquare, NotebookText, Palette, PanelLeft, PanelRight, Play, X } from 'lucide-react';
-=======
-import { Activity, FolderTree, History, MessageSquare, NotebookText, Palette, PanelLeft, PanelRight, Pin, PinOff, X, Zap } from 'lucide-react';
->>>>>>> 7d9fb8f5 (feat: add pin button to session side panel for cross-tab persistence)
+import { Activity, FolderTree, History, MessageSquare, NotebookText, Palette, PanelLeft, PanelRight, Pin, PinOff, Play, X, Zap } from 'lucide-react';
 import { buildSidePanelChromeThemeFromTerminalTheme } from '../../infrastructure/theme/terminalAppearanceTokens';
 import { injectTerminalLayerChromeSurfaceVars } from '../../infrastructure/theme/terminalAppearanceVars';
 import React, { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';

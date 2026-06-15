@@ -269,6 +269,69 @@ export interface DiscoveredAgent {
   authSource?: string | null;
 }
 
+export type AIHttpProxyMode = 'off' | 'system' | 'custom';
+
+export interface AIHttpProxyCustomConfig {
+  scheme: 'http' | 'https';
+  host: string;
+  port: number;
+  username?: string;
+  password?: string; // enc:v1: encrypted via credentialBridge
+}
+
+export interface AIHttpProxyConfig {
+  mode: AIHttpProxyMode;
+  custom?: AIHttpProxyCustomConfig;
+}
+
+export const DEFAULT_AI_HTTP_PROXY_CONFIG: AIHttpProxyConfig = {
+  mode: 'off',
+};
+
+export function sanitizeAIHttpProxyConfig(value: unknown): AIHttpProxyConfig {
+  if (!value || typeof value !== 'object') return DEFAULT_AI_HTTP_PROXY_CONFIG;
+
+  const raw = value as {
+    mode?: unknown;
+    custom?: {
+      scheme?: unknown;
+      host?: unknown;
+      port?: unknown;
+      username?: unknown;
+      password?: unknown;
+    } | null;
+  };
+
+  if (raw.mode === 'system') {
+    return { mode: 'system' };
+  }
+
+  if (raw.mode === 'custom') {
+    const custom = raw.custom ?? {};
+    const parsedPort = Number(custom.port);
+    const port = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535
+      ? parsedPort
+      : 8080;
+
+    return {
+      mode: 'custom',
+      custom: {
+        scheme: custom.scheme === 'https' ? 'https' : 'http',
+        host: typeof custom.host === 'string' ? custom.host : '',
+        port,
+        username: typeof custom.username === 'string' && custom.username.length > 0
+          ? custom.username
+          : undefined,
+        password: typeof custom.password === 'string' && custom.password.length > 0
+          ? custom.password
+          : undefined,
+      },
+    };
+  }
+
+  return DEFAULT_AI_HTTP_PROXY_CONFIG;
+}
+
 // Web Search types
 export type WebSearchProviderId = 'tavily' | 'exa' | 'bocha' | 'zhipu' | 'searxng';
 
@@ -448,17 +511,13 @@ export const CLAUDE_MODEL_PRESETS: AgentModelPreset[] = [
   { id: 'haiku', name: 'Haiku 4.5', description: 'Fastest' },
 ];
 
-// Curated codex model list (codex-sdk has no enumeration API). Mirrors the
-// craft agent's `openai-codex` set. The codex driver splits "<id>/<effort>"
-// into model + modelReasoningEffort, so thinkingLevels work via codex-sdk.
+// Conservative Codex fallback list used only when the live `codex debug models`
+// probe is unavailable. The codex driver splits "<id>/<effort>" into model +
+// modelReasoningEffort, so thinkingLevels work via codex-sdk.
 export const CODEX_MODEL_PRESETS: AgentModelPreset[] = [
   { id: 'gpt-5.5', name: 'GPT-5.5', description: 'Latest', thinkingLevels: ['low', 'medium', 'high', 'xhigh'] },
-  { id: 'gpt-5.2', name: 'GPT-5.2', thinkingLevels: ['low', 'medium', 'high', 'xhigh'] },
-  { id: 'gpt-5.1', name: 'GPT-5.1', thinkingLevels: ['low', 'medium', 'high', 'xhigh'] },
-  { id: 'gpt-5', name: 'GPT-5', thinkingLevels: ['low', 'medium', 'high', 'xhigh'] },
-  { id: 'o4-mini', name: 'o4-mini', description: 'Fast reasoning' },
-  { id: 'o3', name: 'o3', description: 'Reasoning' },
-  { id: 'gpt-4o', name: 'GPT-4o' },
+  { id: 'gpt-5.4', name: 'GPT-5.4', thinkingLevels: ['low', 'medium', 'high', 'xhigh'] },
+  { id: 'gpt-5.4-mini', name: 'GPT-5.4-Mini', thinkingLevels: ['low', 'medium', 'high', 'xhigh'] },
 ];
 
 export const CURSOR_MODEL_PRESETS: AgentModelPreset[] = [

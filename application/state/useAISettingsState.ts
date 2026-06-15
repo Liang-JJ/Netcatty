@@ -14,12 +14,14 @@ import {
   STORAGE_KEY_AI_AGENT_MODEL_MAP,
   STORAGE_KEY_AI_AGENT_PROVIDER_MAP,
   STORAGE_KEY_AI_WEB_SEARCH,
+  STORAGE_KEY_AI_HTTP_PROXY,
   STORAGE_KEY_AI_QUICK_MESSAGES,
   STORAGE_KEY_AI_SHOW_TERMINAL_SELECTION_ACTION,
 } from '../../infrastructure/config/storageKeys';
 import type { AIQuickMessage } from '../../infrastructure/ai/quickMessages';
 import { sanitizeQuickMessages } from '../../infrastructure/ai/quickMessages';
 import type {
+  AIHttpProxyConfig,
   AIPermissionMode,
   AIToolIntegrationMode,
   ExternalAgentConfig,
@@ -27,9 +29,11 @@ import type {
   WebSearchConfig,
 } from '../../infrastructure/ai/types';
 import {
+  DEFAULT_AI_HTTP_PROXY_CONFIG,
   DEFAULT_COMMAND_BLOCKLIST,
   DEFAULT_COMMAND_TIMEOUT_SECONDS,
   normalizeCommandTimeoutSeconds,
+  sanitizeAIHttpProxyConfig,
 } from '../../infrastructure/ai/types';
 import { removeProviderReferences } from './aiProviderCleanup';
 import { AI_STATE_CHANGED_EVENT, emitAIStateChanged } from './aiStateEvents';
@@ -79,6 +83,11 @@ export function useAISettingsState() {
   );
   const [webSearchConfig, setWebSearchConfigRaw] = useState<WebSearchConfig | null>(() =>
     localStorageAdapter.read<WebSearchConfig>(STORAGE_KEY_AI_WEB_SEARCH) ?? null
+  );
+  const [aiHttpProxyConfig, setAIHttpProxyConfigRaw] = useState<AIHttpProxyConfig>(() =>
+    sanitizeAIHttpProxyConfig(
+      localStorageAdapter.read<AIHttpProxyConfig>(STORAGE_KEY_AI_HTTP_PROXY) ?? DEFAULT_AI_HTTP_PROXY_CONFIG,
+    )
   );
   const [quickMessages, setQuickMessagesRaw] = useState<AIQuickMessage[]>(() =>
     sanitizeQuickMessages(localStorageAdapter.read<unknown>(STORAGE_KEY_AI_QUICK_MESSAGES)),
@@ -188,6 +197,14 @@ export function useAISettingsState() {
     } else {
       localStorageAdapter.remove(STORAGE_KEY_AI_WEB_SEARCH);
     }
+    emitAIStateChanged(STORAGE_KEY_AI_WEB_SEARCH);
+  }, []);
+
+  const setAIHttpProxyConfig = useCallback((config: AIHttpProxyConfig) => {
+    const next = sanitizeAIHttpProxyConfig(config);
+    setAIHttpProxyConfigRaw(next);
+    localStorageAdapter.write(STORAGE_KEY_AI_HTTP_PROXY, next);
+    emitAIStateChanged(STORAGE_KEY_AI_HTTP_PROXY);
   }, []);
 
   const setQuickMessages = useCallback((value: AIQuickMessage[] | ((prev: AIQuickMessage[]) => AIQuickMessage[])) => {
@@ -259,6 +276,11 @@ export function useAISettingsState() {
           case STORAGE_KEY_AI_WEB_SEARCH:
             setWebSearchConfigRaw(localStorageAdapter.read<WebSearchConfig>(STORAGE_KEY_AI_WEB_SEARCH) ?? null);
             break;
+          case STORAGE_KEY_AI_HTTP_PROXY:
+            setAIHttpProxyConfigRaw(sanitizeAIHttpProxyConfig(
+              localStorageAdapter.read<AIHttpProxyConfig>(STORAGE_KEY_AI_HTTP_PROXY) ?? DEFAULT_AI_HTTP_PROXY_CONFIG,
+            ));
+            break;
           case STORAGE_KEY_AI_QUICK_MESSAGES:
             setQuickMessagesRaw(sanitizeQuickMessages(localStorageAdapter.read<unknown>(STORAGE_KEY_AI_QUICK_MESSAGES)));
             break;
@@ -290,6 +312,24 @@ export function useAISettingsState() {
     bridge?.aiMcpSetToolIntegrationMode?.(toolIntegrationMode);
   }, [commandBlocklist, commandTimeout, globalPermissionMode, maxIterations, toolIntegrationMode]);
 
+  useEffect(() => {
+    const bridge = getAIBridge();
+    if (!bridge?.aiSyncProviders) return;
+    void bridge.aiSyncProviders(providers).catch(() => {});
+  }, [providers]);
+
+  useEffect(() => {
+    const bridge = getAIBridge();
+    if (!bridge?.aiSyncWebSearch) return;
+    void bridge.aiSyncWebSearch(webSearchConfig?.apiHost ?? null, webSearchConfig?.apiKey ?? null).catch(() => {});
+  }, [webSearchConfig]);
+
+  useEffect(() => {
+    const bridge = getAIBridge();
+    if (!bridge?.aiSyncHttpProxy) return;
+    void bridge.aiSyncHttpProxy(aiHttpProxyConfig).catch(() => {});
+  }, [aiHttpProxyConfig]);
+
   const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? null;
 
   return useMemo(() => ({
@@ -319,6 +359,8 @@ export function useAISettingsState() {
     setMaxIterations,
     webSearchConfig,
     setWebSearchConfig,
+    aiHttpProxyConfig,
+    setAIHttpProxyConfig,
     quickMessages,
     setQuickMessages,
     showTerminalSelectionAIAction,
@@ -350,6 +392,8 @@ export function useAISettingsState() {
     setMaxIterations,
     webSearchConfig,
     setWebSearchConfig,
+    aiHttpProxyConfig,
+    setAIHttpProxyConfig,
     quickMessages,
     setQuickMessages,
     showTerminalSelectionAIAction,

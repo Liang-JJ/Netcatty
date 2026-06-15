@@ -128,3 +128,17 @@ git rebase v<new-tag>
 npm run lint && npm t
 npm run pack:mac && npm run pack:win-x64
 ```
+
+### 6. AI 功能代理与 Codex 实时模型列表
+
+**涉及文件**: `application/state/useAIState.ts`, `application/state/useAISettingsState.ts`, `components/settings/tabs/ai/HttpProxySettings.tsx`, `electron/bridges/aiBridge/proxyRuntime.cjs`, `electron/bridges/aiBridge.cjs`, `electron/preload/api.cjs`, `types/global/netcatty-bridge-ai.d.ts`, `infrastructure/ai/types.ts`
+
+- AI 代理新增 `off / system / custom` 三种模式，设置页由 `HttpProxySettings.tsx` 负责编辑，状态通过 `useAISettingsState.ts` 和 `useAIState.ts` 统一持久化到 `STORAGE_KEY_AI_HTTP_PROXY`。
+- 主进程的 `proxyRuntime.cjs` 维护独立的 AI 会话分区，按配置切换直连、系统代理或自定义代理；自定义代理会通过 Electron `login` 事件仅对 AI 请求注入凭据，并保留 `localhost/127.0.0.1/::1` 直连白名单。
+- `electron/preload/api.cjs` 和 `types/global/netcatty-bridge-ai.d.ts` 增加了 AI 代理同步 IPC，保证前端改动能实时传到主进程。
+
+**涉及文件**: `electron/bridges/aiBridge/sdk/codexDriver.cjs`, `electron/bridges/aiBridge/sdk/index.cjs`, `electron/bridges/aiBridge/sdk/sdkStreamHandlers.cjs`, `electron/bridges/aiBridge/sdk/codexDriver.test.cjs`, `electron/bridges/aiBridge/sdk/index.test.cjs`, `infrastructure/ai/types.ts`
+
+- Codex 的模型列表不再依赖硬编码预设，而是直接调用 `codex debug models` 读取实时 JSON 目录。
+- 解析逻辑只保留 `visibility === "list"` 的模型，并把 `slug / display_name / supported_reasoning_levels` 映射到下拉可用的数据结构，和 Codex 当前可见模型保持一致。
+- `sdkStreamHandlers.cjs` 继续保留失败降级路径，实时查询失败时再回退到保守的 Codex 预设；`infrastructure/ai/types.ts` 里的 fallback 也收敛为 `GPT-5.5 / GPT-5.4 / GPT-5.4-Mini`。
