@@ -193,7 +193,6 @@ test("terminal side panel auto-open settings are syncable for auto-sync detectio
     ),
   );
 });
-});
 
 test("buildSyncPayload excludes local-only AI HTTP proxy settings", () => {
 });
