@@ -3,6 +3,7 @@ const { etExtraResources } = require('./scripts/et-extra-resources.cjs');
 
 // Respect npm_config_arch so single-arch scripts (pack:win-x64, etc.) build
 // only one arch. When unset ("npm run pack:mac"), default to both.
+/* global process */
 const npmConfigArch = process.env.npm_config_arch;
 const macArchs = npmConfigArch ? [npmConfigArch] : ['arm64', 'x64'];
 
