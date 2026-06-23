@@ -80,7 +80,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 > 每次 rebase 后运行 `git log --oneline v<upstream-tag>..HEAD` 查看需保留的提交。
 
-### 当前 rebase 基准: v1.1.40
+### 当前 rebase 基准: v1.1.42
 
 ### 1. 一键登录 + 全键盘操作
 
@@ -130,9 +130,16 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 - 解析逻辑只保留 `visibility === "list"` 的模型，并把 `slug / display_name / supported_reasoning_levels` 映射到下拉可用的数据结构，和 Codex 当前可见模型保持一致。
 - `sdkStreamHandlers.cjs` 继续保留失败降级路径，实时查询失败时再回退到保守的 Codex 预设；`infrastructure/ai/types.ts` 里的 fallback 也收敛为 `GPT-5.5 / GPT-5.4 / GPT-5.4-Mini`。
 
+### 6. 主机密钥弹窗自动聚焦 + 终端连接后强制聚焦
+
+**涉及文件**: `components/terminal/TerminalHostKeyVerification.tsx`, `components/Terminal.tsx`
+
+- `TerminalHostKeyVerification.tsx`: 自动聚焦 "Add and Continue" / "Update and Continue" 按钮，添加 Enter 键触发 `onAddAndContinue`
+- `Terminal.tsx`: SSH 连接建立后 (status === "connected") 延迟 150ms 自动聚焦 xterm textarea
+
 ### Rebase 操作备忘
 
-当前基准: **v1.1.40**
+当前基准: **v1.1.42**
 
 ```bash
 git fetch origin --tags
