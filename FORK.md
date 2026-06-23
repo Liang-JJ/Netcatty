@@ -61,7 +61,8 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 1. **`serialport` native 模块在 Windows 上会闪退** — `electron/bridges/terminalBridge.cjs` 使用 try-catch 懒加载 `serialport`，加载失败时 `SerialPort` 设为 `null`，不会崩溃。
 2. **Windows 构建中的 native 模块** — `@electron/rebuild` 会在打包时重编译，`npm_config_arch` 让它只处理目标 arch。
-3. **新增 native 依赖后** — 检查 ESM/ts 文件中的顶层 import，到 `electron/bridges/*.cjs` 中确认用 try-catch 懒加载。
+3. **`@serialport/bindings-cpp` 跨平台预编译** — 该模块使用非标准 prebuild 文件命名（`@serialport+bindings-cpp.node`），`@electron/rebuild` 的 prebuildify 检测器无法识别，会回退到 node-gyp 源码编译从而在交叉编译时报错。`scripts/link-serialport-prebuilds.cjs` 在 prebuild 阶段为每个平台创建 `node.napi.node` 软链接指向对应的预编译文件，让 `@electron/rebuild` 能正确识别并跳过不必要的源码编译。
+4. **新增 native 依赖后** — 检查 ESM/ts 文件中的顶层 import，到 `electron/bridges/*.cjs` 中确认用 try-catch 懒加载。
 
 ### Testing
 - Bridge tests (`electron/bridges/*.test.cjs`) run alongside their source files in CommonJS.
@@ -109,10 +110,12 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### 4. 跨平台构建兼容
 
-**涉及文件**: `electron-builder.config.cjs`, `electron/bridges/terminalBridge.cjs`
+**涉及文件**: `electron-builder.config.cjs`, `electron/bridges/terminalBridge.cjs`, `scripts/link-serialport-prebuilds.cjs`, `package.json`
 
 - `electron-builder.config.cjs`: `npmConfigArch` / `macArchs` / `winArchs` 变量，读取 `npm_config_arch`
 - `terminalBridge.cjs`: serialport try-catch 懒加载
+- `scripts/link-serialport-prebuilds.cjs`: 为 `@serialport/bindings-cpp` 的非标准 prebuild 文件创建 `node.napi.node` 软链接，使 `@electron/rebuild` 能在交叉编译时识别预编译文件
+- `package.json`: prebuild 脚本追加 `link-serialport-prebuilds.cjs`
 - `npm run pack:win-x64` 只构建 x64
 - **rebase 注意**: `electron-builder.config.cjs` 上游可能新增排除规则，合并时保留我们的 arch 变量
 
