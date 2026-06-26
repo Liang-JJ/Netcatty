@@ -3,7 +3,7 @@
   "description": "Netcatty is a modern SSH manager and terminal app with host grouping, SFTP, keychain, port forwarding, and a rich UI.",
   "homepage": "https://github.com/binaricat/Netcatty",
   "private": true,
-  "version": "1.1.45-fork",
+  "version": "1.1.51-fork",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -21,13 +21,9 @@
   "scripts": {
     "dev": "npm run fetch:mosh:dev && npm run fetch:et:dev && npm run lint && concurrently -k \"vite --strictPort\" \"npm:dev:electron\"",
     "dev:electron": "wait-on http-get://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 node electron/launch.cjs",
-<<<<<<< HEAD
-    "clean:vite": "node scripts/clean-vite-cache.cjs",
+"clean:vite": "node scripts/clean-vite-cache.cjs",
     "dev:clean": "npm run clean:vite && npm run dev",
-    "prebuild": "node scripts/copy-monaco.cjs",
-=======
-    "prebuild": "node scripts/copy-monaco.cjs && node scripts/link-serialport-prebuilds.cjs",
->>>>>>> 0476bb5b (fix: add serialport prebuild symlink to fix cross-compile on macOS)
+    "prebuild": "node scripts/copy-monaco.cjs && node scripts/link-serialport-prebuilds.cjs && node scripts/restore-win32-prebuilds.cjs",
     "fetch:mosh": "node scripts/fetch-mosh-binaries.cjs",
     "fetch:mosh:dev": "node scripts/fetch-mosh-binaries.cjs --host --resolve-release",
     "fetch:et": "node scripts/fetch-et-binaries.cjs",
