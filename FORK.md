@@ -81,7 +81,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 > 每次 rebase 后运行 `git log --oneline v<upstream-tag>..HEAD` 查看需保留的提交。
 
-### 当前 rebase 基准: v1.1.42
+### 当前 rebase 基准: v1.1.45
 
 ### 1. 一键登录 + 全键盘操作
 
@@ -106,7 +106,8 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 **涉及文件**: `components/terminal/keywordHighlight.ts`
 
-- 移除 alternate buffer 中禁用高亮的逻辑
+- 移除 `triggerRefresh` 和 `executeRefresh` 中 alternate buffer 禁用高亮的逻辑
+- **rebase 高频冲突**: 上游 v1.1.45（#1619）重构了该文件，方法签名升级为 `triggerRefresh(mode, reason)`，但仍保留 alternate buffer 禁用。每次 rebase 都需要在上游新方法体中重新移除这两处 `buffer.active.type === 'alternate'` 检查，并保留私有注释说明 less/more 需要高亮
 
 ### 4. 跨平台构建兼容
 
@@ -142,7 +143,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### Rebase 操作备忘
 
-当前基准: **v1.1.42**
+当前基准: **v1.1.45**
 
 ```bash
 git fetch origin --tags
