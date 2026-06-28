@@ -81,7 +81,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 > 每次 rebase 后运行 `git log --oneline v<upstream-tag>..HEAD` 查看需保留的提交。
 
-### 当前 rebase 基准: v1.1.45
+### 当前 rebase 基准: v1.1.47
 
 ### 1. 一键登录 + 全键盘操作
 
@@ -143,7 +143,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### Rebase 操作备忘
 
-当前基准: **v1.1.45**
+当前基准: **v1.1.47**
 
 ```bash
 git fetch origin --tags
