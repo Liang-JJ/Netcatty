@@ -24,7 +24,6 @@ import { detectLocalOs } from '../lib/localShell';
 import { useStoredBoolean } from '../application/state/useStoredBoolean';
 import { useStoredString } from '../application/state/useStoredString';
 import { useStoredNumber } from '../application/state/useStoredNumber';
-import { useStoredBoolean } from '../application/state/useStoredBoolean';
 import {
   STORAGE_KEY_SIDE_PANEL_PINNED,
   STORAGE_KEY_SIDE_PANEL_WIDTH,
