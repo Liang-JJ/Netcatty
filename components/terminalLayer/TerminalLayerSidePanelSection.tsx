@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Activity, FolderTree, History, MessageSquare, NotebookText, Palette, PanelLeft, PanelRight, Pin, PinOff, Play, X, Zap } from 'lucide-react';
+import { Activity, FolderTree, History, MessageSquare, NotebookText, Palette, PanelLeft, PanelRight, Pin, PinOff, Play, X } from 'lucide-react';
 import { buildSidePanelChromeThemeFromTerminalTheme } from '../../infrastructure/theme/terminalAppearanceTokens';
 import { injectTerminalLayerChromeSurfaceVars } from '../../infrastructure/theme/terminalAppearanceVars';
 import React, { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
