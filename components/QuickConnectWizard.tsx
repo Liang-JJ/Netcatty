@@ -42,7 +42,7 @@ interface QuickConnectWizardProps {
   identities: Identity[];
   warnings?: string[];
   onConnect: (host: Host) => void;
-  onSaveHost?: (host: Host) => void;
+  onSaveHost?: (host: Host) => Host;
   onAddKey?: () => void;
   onClose: () => void;
 }
@@ -260,11 +260,9 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
       save,
     });
 
-    if (save && onSaveHost) {
-      onSaveHost(tempHost);
-    }
+    const hostToConnect = save && onSaveHost ? onSaveHost(tempHost) : tempHost;
 
-    onConnect(tempHost);
+    onConnect(hostToConnect);
     onClose();
   };
 
