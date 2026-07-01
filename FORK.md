@@ -85,9 +85,10 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### 1. 一键登录 + 全键盘操作
 
-**涉及文件**: `components/QuickConnectWizard.tsx`, `components/vault/VaultViewLayout.tsx`, `application/i18n/locales/{en,zh-CN}/vault.ts`
+**涉及文件**: `components/QuickConnectWizard.tsx`, `components/VaultView.tsx`, `components/vault/VaultViewLayout.tsx`, `domain/host.ts`, `domain/host.test.ts`, `application/i18n/locales/{en,zh-CN}/vault.ts`
 
 - QuickConnectWizard 第二步默认"从钥匙串选择"页签，选择 Identity 后跳过 auth 步骤
+- QuickConnect 保存主机时按 host/port/auth（含 Keychain Identity 解析后的认证信息）去重；命中已有主机时复用原 host id，避免相同连接创建新主机导致 AI 对话历史等 host 绑定能力失效
 - ArrowUp/Down 切换协议选项，全局 Enter 进下一步，Tab focus trap
 - 左右方向键在页签聚焦时切换"手动输入"/"从钥匙串选择"
 - 切换到手动输入时清理自动填充的密码

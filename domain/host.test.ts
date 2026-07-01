@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import type { Host } from "./models.ts";
+import type { Host, Identity, SSHKey } from "./models.ts";
 import {
+  buildQuickConnectReusableHost,
   classifyDistroId,
   detectVendorFromSshVersion,
   getHostAddressForClipboard,
   hostsEqualForIdentityReuse,
+  findEquivalentQuickConnectHost,
   migrateHostsFromLegacyLineTimestamps,
   normalizeDistroId,
   normalizePrimaryTelnetState,
@@ -133,6 +135,129 @@ test("upsertHostById appends a duplicated host with a fresh id", () => {
   });
 
   assert.deepEqual(upsertHostById([existing], duplicate), [existing, duplicate]);
+});
+
+test("findEquivalentQuickConnectHost reuses a host with the same address and password auth", () => {
+  const existing = makeHost({
+    id: "saved-host",
+    hostname: "Example.com",
+    port: 2222,
+    username: "alice",
+    password: "secret",
+  });
+  const quickConnect = makeHost({
+    id: "quick-host",
+    hostname: "example.com",
+    port: 2222,
+    username: "alice",
+    password: "secret",
+  });
+
+  assert.equal(
+    findEquivalentQuickConnectHost({ hosts: [existing], candidate: quickConnect })?.id,
+    "saved-host",
+  );
+});
+
+test("findEquivalentQuickConnectHost does not reuse a host when the port differs", () => {
+  const existing = makeHost({ id: "saved-host", port: 22, password: "secret" });
+  const quickConnect = makeHost({ id: "quick-host", port: 2222, password: "secret" });
+
+  assert.equal(
+    findEquivalentQuickConnectHost({ hosts: [existing], candidate: quickConnect }),
+    undefined,
+  );
+});
+
+test("findEquivalentQuickConnectHost resolves identity credentials before matching", () => {
+  const identity: Identity = {
+    id: "identity-1",
+    label: "Alice",
+    username: "alice",
+    authMethod: "password",
+    password: "secret",
+    created: 1,
+  };
+  const existing = makeHost({
+    id: "saved-host",
+    username: "ignored",
+    password: undefined,
+    identityId: identity.id,
+  });
+  const quickConnect = makeHost({
+    id: "quick-host",
+    username: "alice",
+    password: "secret",
+  });
+
+  assert.equal(
+    findEquivalentQuickConnectHost({
+      hosts: [existing],
+      candidate: quickConnect,
+      identities: [identity],
+    })?.id,
+    "saved-host",
+  );
+});
+
+test("findEquivalentQuickConnectHost matches key auth through identities", () => {
+  const key: SSHKey = {
+    id: "key-1",
+    label: "Alice key",
+    type: "ED25519",
+    privateKey: "private",
+    source: "generated",
+    category: "key",
+    created: 1,
+  };
+  const identity: Identity = {
+    id: "identity-1",
+    label: "Alice",
+    username: "alice",
+    authMethod: "key",
+    keyId: key.id,
+    created: 1,
+  };
+  const existing = makeHost({
+    id: "saved-host",
+    username: "ignored",
+    authMethod: "password",
+    identityId: identity.id,
+  });
+  const quickConnect = makeHost({
+    id: "quick-host",
+    username: "alice",
+    authMethod: "key",
+    identityFileId: key.id,
+  });
+
+  assert.equal(
+    findEquivalentQuickConnectHost({
+      hosts: [existing],
+      candidate: quickConnect,
+      keys: [key],
+      identities: [identity],
+    })?.id,
+    "saved-host",
+  );
+});
+
+test("buildQuickConnectReusableHost keeps the saved id while honoring quick transport overrides", () => {
+  const existing = makeHost({
+    id: "saved-host",
+    label: "Saved label",
+    moshEnabled: true,
+  });
+  const quickConnect = makeHost({
+    id: "quick-host",
+    label: "Quick label",
+    moshEnabled: false,
+  });
+
+  assert.deepEqual(buildQuickConnectReusableHost(existing, quickConnect), {
+    ...existing,
+    moshEnabled: false,
+  });
 });
 
 test("telnet credential helpers preserve explicitly cleared values", () => {

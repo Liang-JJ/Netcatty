@@ -1,6 +1,8 @@
-import { Host, Snippet, TerminalSettings } from './models';
+import { Host, Identity, Snippet, SSHKey, TerminalSettings } from './models';
+import { sanitizeCredentialValue } from './credentials';
 import { sanitizeHostIconFields } from './hostIcon';
 import { migrateHostConnectScriptIds } from './hostConnectScripts.ts';
+import { resolveHostAuth } from './sshAuth';
 import { migrateDeprecatedFontOverride } from '../infrastructure/config/fonts';
 import { sanitizeOptionalSshTimeoutSeconds } from './sshConnectionTimeouts.ts';
 import {
@@ -357,6 +359,104 @@ export const preserveConcurrentHostLineTimestampUpdate = ({
   ) {
     next = { ...next, sftpFollowTerminalCwd: latestHost.sftpFollowTerminalCwd };
   }
+  return next;
+};
+
+type QuickConnectRemoteKind = 'ssh' | 'telnet';
+
+const normalizeQuickConnectHostname = (hostname: string): string =>
+  hostname.trim().replace(/^\[|\]$/g, '').toLowerCase();
+
+const normalizeQuickConnectSecret = (value: string | undefined): string =>
+  sanitizeCredentialValue(value) ?? (value === undefined ? '' : value);
+
+const getQuickConnectRemoteKind = (host: Host): QuickConnectRemoteKind | null => {
+  if (host.protocol === 'local' || host.protocol === 'serial') return null;
+  return host.protocol === 'telnet' ? 'telnet' : 'ssh';
+};
+
+const getQuickConnectPort = (host: Host, kind: QuickConnectRemoteKind): number =>
+  kind === 'telnet' ? resolveTelnetPort(host) : host.port ?? 22;
+
+const buildQuickConnectAuthSignature = (
+  host: Host,
+  kind: QuickConnectRemoteKind,
+  keys: SSHKey[],
+  identities: Identity[],
+) => {
+  if (kind === 'telnet') {
+    const identity = host.telnetIdentityId
+      ? identities.find((item) => item.id === host.telnetIdentityId)
+      : undefined;
+    return {
+      username: (identity ? identity.username : resolveTelnetUsername(host) ?? '').trim(),
+      password: normalizeQuickConnectSecret(identity ? identity.password : resolveTelnetPassword(host)),
+    };
+  }
+
+  const auth = resolveHostAuth({ host, keys, identities });
+  if (auth.authMethod === 'password') {
+    return {
+      authMethod: 'password',
+      username: auth.username.trim(),
+      password: normalizeQuickConnectSecret(auth.password),
+    };
+  }
+  return {
+    authMethod: auth.authMethod,
+    username: auth.username.trim(),
+    keyId: auth.keyId ?? '',
+  };
+};
+
+const buildQuickConnectHostSignature = (
+  host: Host,
+  keys: SSHKey[],
+  identities: Identity[],
+): string | null => {
+  const kind = getQuickConnectRemoteKind(host);
+  if (!kind) return null;
+  return JSON.stringify({
+    kind,
+    hostname: normalizeQuickConnectHostname(host.hostname),
+    port: getQuickConnectPort(host, kind),
+    auth: buildQuickConnectAuthSignature(host, kind, keys, identities),
+  });
+};
+
+export const findEquivalentQuickConnectHost = ({
+  hosts,
+  candidate,
+  keys = [],
+  identities = [],
+}: {
+  hosts: Host[];
+  candidate: Host;
+  keys?: SSHKey[];
+  identities?: Identity[];
+}): Host | undefined => {
+  const candidateSignature = buildQuickConnectHostSignature(candidate, keys, identities);
+  if (!candidateSignature) return undefined;
+
+  return hosts.reduce<Host | undefined>((best, host) => {
+    if (host.id === candidate.id) return best;
+    if (buildQuickConnectHostSignature(host, keys, identities) !== candidateSignature) return best;
+    if (!best) return host;
+    return (host.createdAt ?? Number.MAX_SAFE_INTEGER) < (best.createdAt ?? Number.MAX_SAFE_INTEGER)
+      ? host
+      : best;
+  }, undefined);
+};
+
+export const buildQuickConnectReusableHost = (savedHost: Host, quickConnectHost: Host): Host => {
+  const next: Host = {
+    ...savedHost,
+    protocol: quickConnectHost.protocol,
+    port: quickConnectHost.port,
+    moshEnabled: quickConnectHost.moshEnabled,
+  };
+  if (quickConnectHost.telnetEnabled !== undefined) next.telnetEnabled = quickConnectHost.telnetEnabled;
+  if (quickConnectHost.telnetPort !== undefined) next.telnetPort = quickConnectHost.telnetPort;
   return next;
 };
 
