@@ -33,7 +33,7 @@ interface QuickConnectWizardProps {
   identities?: Identity[];
   warnings?: string[];
   onConnect: (host: Host) => void;
-  onSaveHost?: (host: Host) => void;
+  onSaveHost?: (host: Host) => Host;
   onAddKey?: () => void;
   onClose: () => void;
 }
@@ -243,7 +243,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
     const effectivePort = port || getDefaultPort(protocol);
     let effectiveUsername = username || target.username || "root";
     let effectivePassword = password;
-    let effectiveAuthMethod = authMethod;
+    let effectiveAuthMethod: Host["authMethod"] = authMethod;
     let effectiveKeyId = selectedKeyId;
 
     // If using keychain tab, resolve credentials from selected identity
@@ -280,11 +280,9 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
       createdAt: Date.now(),
     };
 
-    if (saveCredentials && onSaveHost) {
-      onSaveHost(tempHost);
-    }
+    const hostToConnect = saveCredentials && onSaveHost ? onSaveHost(tempHost) : tempHost;
 
-    onConnect(tempHost);
+    onConnect(hostToConnect);
     onClose();
   };
 
