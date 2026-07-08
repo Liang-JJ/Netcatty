@@ -51,6 +51,8 @@ npm run pack:win-x64  # Windows x64  — macOS 上可执行
 npm run pack:linux    # Linux (AppImage + deb + rpm)
 ```
 
+**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.60` 构建时，`package.json` 中版本号应为 `1.1.60-fork`，生成产物也沿用该版本号。
+
 **工作原理：** `electron-builder.config.cjs` 读取 `npm_config_arch` 环境变量动态决定构建的 arch：
 
 - 未设置 `npm_config_arch`：构建所有平台默认 arch（mac: `['arm64', 'x64']`, win: `['x64', 'arm64']`），这在 **macOS 上构建 Windows 目标会失败**，因为 arm64 native 模块无法交叉编译
@@ -81,7 +83,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 > 每次 rebase 后运行 `git log --oneline v<upstream-tag>..HEAD` 查看需保留的提交。
 
-### 当前 rebase 基准: v1.1.47
+### 当前 rebase 基准: v1.1.60
 
 ### 1. 一键登录 + 全键盘操作
 
@@ -107,17 +109,18 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 **涉及文件**: `components/terminal/keywordHighlight.ts`
 
-- 移除 `triggerRefresh` 和 `executeRefresh` 中 alternate buffer 禁用高亮的逻辑
-- **rebase 高频冲突**: 上游 v1.1.45（#1619）重构了该文件，方法签名升级为 `triggerRefresh(mode, reason)`，但仍保留 alternate buffer 禁用。每次 rebase 都需要在上游新方法体中重新移除这两处 `buffer.active.type === 'alternate'` 检查，并保留私有注释说明 less/more 需要高亮
+- 移除 `triggerRefresh`、`executeRefresh` 和分片滚动刷新中的 alternate buffer 禁用高亮逻辑
+- **rebase 高频冲突**: 上游 v1.1.45（#1619）重构了该文件，方法签名升级为 `triggerRefresh(mode, reason)`，但仍保留 alternate buffer 禁用；v1.1.60 还在分片滚动刷新路径增加了同类早退。每次 rebase 都需要在上游新方法体中重新移除这些 `buffer.active.type === 'alternate'` 检查，并保留私有注释说明 less/more 需要高亮
 
 ### 4. 跨平台构建兼容
 
 **涉及文件**: `electron-builder.config.cjs`, `electron/bridges/terminalBridge.cjs`, `scripts/link-serialport-prebuilds.cjs`, `package.json`
 
 - `electron-builder.config.cjs`: `npmConfigArch` / `macArchs` / `winArchs` 变量，读取 `npm_config_arch`
+- `electron-builder.config.cjs`: Windows `zip` target 不显式设置 `arch`，让它跟随 `--x64` / `--arm64` CLI 参数，避免 x64 构建误产 arm64 zip
 - `terminalBridge.cjs`: serialport try-catch 懒加载
 - `scripts/link-serialport-prebuilds.cjs`: 为 `@serialport/bindings-cpp` 的非标准 prebuild 文件创建 `node.napi.node` 软链接，使 `@electron/rebuild` 能在交叉编译时识别预编译文件
-- `package.json`: prebuild 脚本追加 `link-serialport-prebuilds.cjs`
+- `package.json`: prebuild 脚本追加 `link-serialport-prebuilds.cjs`；默认构建版本号维护为 `<原tag>-fork`
 - `npm run pack:win-x64` 只构建 x64
 - **rebase 注意**: `electron-builder.config.cjs` 上游可能新增排除规则，合并时保留我们的 arch 变量
 
@@ -144,7 +147,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### Rebase 操作备忘
 
-当前基准: **v1.1.47**
+当前基准: **v1.1.60**
 
 ```bash
 git fetch origin --tags

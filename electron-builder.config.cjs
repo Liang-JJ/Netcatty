@@ -231,8 +231,7 @@ module.exports = {
                 arch: winArchs
             },
             {
-                target: 'zip',
-                arch: winArchs
+                target: 'zip'
             }
         ],
         extraResources: [...moshExtraResources('win32'), ...etExtraResources('win32')]
