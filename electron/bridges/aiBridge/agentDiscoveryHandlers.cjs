@@ -12,7 +12,7 @@ async function probeCursorSdkAvailability(shellEnv, options = {}) {
   let sdkInstalled = false;
   if (platformPackageName) {
     try {
-      await import("@cursor/sdk");
+      require.resolve("@cursor/sdk");
       require.resolve(`${platformPackageName}/package.json`);
       sdkInstalled = true;
     } catch {
