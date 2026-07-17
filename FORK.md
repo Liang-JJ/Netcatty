@@ -51,7 +51,7 @@ npm run pack:win-x64  # Windows x64  — macOS 上可执行
 npm run pack:linux    # Linux (AppImage + deb + rpm)
 ```
 
-**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.60` 构建时，`package.json` 中版本号应为 `1.1.60-fork`，生成产物也沿用该版本号。
+**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.68` 构建时，`package.json` 中版本号应为 `1.1.68-fork`，生成产物也沿用该版本号。
 
 **工作原理：** `electron-builder.config.cjs` 读取 `npm_config_arch` 环境变量动态决定构建的 arch：
 
@@ -83,7 +83,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 > 每次 rebase 后运行 `git log --oneline v<upstream-tag>..HEAD` 查看需保留的提交。
 
-### 当前 rebase 基准: v1.1.60
+### 当前 rebase 基准: v1.1.68
 
 ### 1. 一键登录 + 全键盘操作
 
@@ -107,10 +107,12 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### 3. less/more 中保留关键词高亮
 
-**涉及文件**: `components/terminal/keywordHighlight.ts`
+**涉及文件**: `components/terminal/keywordHighlight.ts`, `components/terminal/keywordHighlight.test.ts`
 
 - 移除 `triggerRefresh`、`executeRefresh` 和分片滚动刷新中的 alternate buffer 禁用高亮逻辑
-- **rebase 高频冲突**: 上游 v1.1.45（#1619）重构了该文件，方法签名升级为 `triggerRefresh(mode, reason)`，但仍保留 alternate buffer 禁用；v1.1.60 还在分片滚动刷新路径增加了同类早退。每次 rebase 都需要在上游新方法体中重新移除这些 `buffer.active.type === 'alternate'` 检查，并保留私有注释说明 less/more 需要高亮
+- tail -f 等 append 输出导致 viewport render 变化时，不把整屏标脏，只扫描新增输出附近
+- alternate buffer 写入采用 220ms quiet debounce，保留 less/more 高亮能力，同时避免翻页/全屏重绘持续抢占
+- **rebase 高频冲突**: 上游持续优化该文件的写入节流、dirty range、render/scroll 刷新路径。每次 rebase 都需要保留 less/more alternate buffer 高亮，不恢复 `buffer.active.type === 'alternate'` 早退；同时保留 tail -f append 输出只扫新增脏区的逻辑
 
 ### 4. 跨平台构建兼容
 
@@ -147,7 +149,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### Rebase 操作备忘
 
-当前基准: **v1.1.60**
+当前基准: **v1.1.68**
 
 ```bash
 git fetch origin --tags
