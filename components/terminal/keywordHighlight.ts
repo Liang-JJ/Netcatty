@@ -140,6 +140,7 @@ export class KeywordHighlighter implements IDisposable {
   private static readonly WRITE_BURST_DEBOUNCE_MS = 180;
   private static readonly WRITE_BURST_IMMEDIATE_MIN_INTERVAL_MS = 48;
   private static readonly WRITE_BURST_HIGHLIGHT_PAUSE_MS = 260;
+  private static readonly ALTERNATE_BUFFER_WRITE_DEBOUNCE_MS = 220;
 
   constructor(term: XTerm) {
     this.term = term;
@@ -148,7 +149,7 @@ export class KeywordHighlighter implements IDisposable {
     this.disposables.push(
       // When user scrolls, refresh visible area
       this.term.onScroll(() => {
-        this.triggerViewportChangeRefresh();
+        this.triggerViewportChangeRefresh("scroll");
       }),
       // User input should keep terminal echo responsive; highlight can catch up
       // once typing pauses.
@@ -201,7 +202,7 @@ export class KeywordHighlighter implements IDisposable {
         const currentViewportY = this.term.buffer.active?.viewportY ?? 0;
         if (currentViewportY !== this.lastViewportY) {
           this.lastViewportY = currentViewportY;
-          this.triggerViewportChangeRefresh();
+          this.triggerViewportChangeRefresh("render");
         }
       })
     );
@@ -504,6 +505,15 @@ export class KeywordHighlighter implements IDisposable {
     // vim/htop repaints are throttled by the debounce + rAF logic below.
 
     const now = performance.now();
+    if (
+      reason === "write" &&
+      mode === "immediate" &&
+      this.pendingRefreshReason === "write" &&
+      this.isAlternateBufferActive()
+    ) {
+      this.scheduleAlternateBufferWriteRefresh(now);
+      return;
+    }
     if (this.shouldDeferRefreshForWriteBurst(mode, reason, now)) {
       // Only cancel a pending rAF when the merged reason is still "write"
       // (pure write burst, no scroll pending).  If a scroll event has been
@@ -616,14 +626,13 @@ export class KeywordHighlighter implements IDisposable {
     }, delay);
   }
 
-  private triggerViewportChangeRefresh() {
+  private triggerViewportChangeRefresh(source: "scroll" | "render") {
     this.cancelScrollRefresh();
     const now = performance.now();
     const isOutputDrivenViewportChange =
       this.lastWriteAt > 0 &&
       now - this.lastWriteAt <= KeywordHighlighter.WRITE_BURST_HIGHLIGHT_PAUSE_MS;
-    if (isOutputDrivenViewportChange || this.isWriteBurstActive(now)) {
-      this.markVisibleRangeDirty();
+    if (source === "render" && (isOutputDrivenViewportChange || this.isWriteBurstActive(now))) {
       this.triggerRefresh("debounced", "write");
       return;
     }
@@ -981,7 +990,16 @@ export class KeywordHighlighter implements IDisposable {
 
   private markDirtyFromWrite() {
     this.updateWriteBurst();
-    const snapshot = this.readBufferSnapshot();
+    if (this.isAlternateBufferActive()) {
+      const snapshot = this.readBufferSnapshot({ includeViewportProbe: false });
+      if (snapshot) {
+        this.lastBufferSnapshot = snapshot;
+      }
+      this.markVisibleRangeDirty();
+      return;
+    }
+
+    let snapshot = this.readBufferSnapshot({ includeViewportProbe: false });
     if (!snapshot) {
       this.markVisibleRangeDirty();
       return;
@@ -993,14 +1011,15 @@ export class KeywordHighlighter implements IDisposable {
     }
 
     const prev = this.lastBufferSnapshot;
-    this.lastBufferSnapshot = snapshot;
 
     if (!prev) {
+      this.lastBufferSnapshot = snapshot;
       this.markVisibleRangeDirty();
       return;
     }
 
     if (snapshot.length < prev.length || snapshot.baseY < prev.baseY) {
+      this.lastBufferSnapshot = snapshot;
       this.markVisibleRangeDirty();
       return;
     }
@@ -1012,6 +1031,7 @@ export class KeywordHighlighter implements IDisposable {
     const largeDeltaThreshold = rows * 4;
 
     if (cursorSpan > largeDeltaThreshold || baseSpan > largeDeltaThreshold) {
+      this.lastBufferSnapshot = snapshot;
       this.markVisibleRangeDirty();
       return;
     }
@@ -1020,25 +1040,37 @@ export class KeywordHighlighter implements IDisposable {
       snapshot.length === prev.length &&
       snapshot.baseY === prev.baseY &&
       snapshot.viewportY === prev.viewportY;
-    const changedProbeLines = this.collectViewportProbeDiffLines(
-      snapshot.viewportProbe,
-      prev.viewportProbe,
-    );
-    const probeDiffCount = changedProbeLines.length;
     const cursorStart = Math.min(prev.cursorAbsoluteY, snapshot.cursorAbsoluteY) - padding;
     const cursorEnd = Math.max(prev.cursorAbsoluteY, snapshot.cursorAbsoluteY) + padding;
-    // Detect in-place ANSI redraw chunks (cursor returns near original line while
-    // multiple viewport regions are actually rewritten).
-    if (sameWindow && cursorSpan <= Math.max(1, padding * 2) && probeDiffCount >= 2) {
-      this.markVisibleRangeDirty();
-      return;
-    }
-    // Single-line ANSI redraw via save/restore: also mark the rewritten probe
-    // line dirty when it is away from the cursor.
-    if (sameWindow && cursorSpan <= Math.max(1, padding * 2) && probeDiffCount === 1) {
-      const changedLine = changedProbeLines[0];
-      if (changedLine < cursorStart || changedLine > cursorEnd) {
-        this.addDirtyRange(changedLine - padding, changedLine + padding);
+
+    if (sameWindow && cursorSpan <= Math.max(1, padding * 2)) {
+      const currentProbe = this.buildViewportProbe(this.term.buffer.active, rows);
+      snapshot = { ...snapshot, viewportProbe: currentProbe };
+      if (prev.viewportProbe.length === 0) {
+        this.lastBufferSnapshot = snapshot;
+        this.markVisibleRangeDirty();
+        return;
+      }
+
+      const changedProbeLines = this.collectViewportProbeDiffLines(
+        currentProbe,
+        prev.viewportProbe,
+      );
+      const probeDiffCount = changedProbeLines.length;
+      // Detect in-place ANSI redraw chunks (cursor returns near original line while
+      // multiple viewport regions are actually rewritten).
+      if (probeDiffCount >= 2) {
+        this.lastBufferSnapshot = snapshot;
+        this.markVisibleRangeDirty();
+        return;
+      }
+      // Single-line ANSI redraw via save/restore: also mark the rewritten probe
+      // line dirty when it is away from the cursor.
+      if (probeDiffCount === 1) {
+        const changedLine = changedProbeLines[0];
+        if (changedLine < cursorStart || changedLine > cursorEnd) {
+          this.addDirtyRange(changedLine - padding, changedLine + padding);
+        }
       }
     }
 
@@ -1053,6 +1085,8 @@ export class KeywordHighlighter implements IDisposable {
         this.addDirtyRange(snapshot.viewportY - padding, prev.viewportY - 1 + padding);
       }
     }
+
+    this.lastBufferSnapshot = snapshot;
   }
 
   private decayWriteBurst(now: number) {
@@ -1162,7 +1196,36 @@ export class KeywordHighlighter implements IDisposable {
     return reason === "write";
   }
 
+  private scheduleAlternateBufferWriteRefresh(now: number) {
+    if (this.pendingRefreshReason === "write" && this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      this.executeRefresh();
+    }, this.getAlternateBufferWriteDelay(now));
+  }
+
+  private getAlternateBufferWriteDelay(now: number): number {
+    if (this.lastWriteAt <= 0) {
+      return KeywordHighlighter.ALTERNATE_BUFFER_WRITE_DEBOUNCE_MS;
+    }
+    const elapsedSinceWrite = now - this.lastWriteAt;
+    return Math.max(16, KeywordHighlighter.ALTERNATE_BUFFER_WRITE_DEBOUNCE_MS - elapsedSinceWrite);
+  }
+
+  private isAlternateBufferActive(): boolean {
+    return this.term.buffer.active?.type === "alternate";
+  }
+
   private getOverscanLines(reason: RefreshReason): number {
+    if (this.isAlternateBufferActive()) {
+      return 0;
+    }
     if (reason === "scroll") {
       return 0;
     }

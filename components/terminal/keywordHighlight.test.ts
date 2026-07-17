@@ -724,6 +724,91 @@ test("recent user input delays keyword highlight scans until typing is quiet", a
   }
 });
 
+test("append-driven viewport changes keep keyword highlight scans near new output", async () => {
+  const raf = installAnimationFrameQueue();
+  try {
+    const { term, handlers, getTranslateCount, getTranslatedLineIndexes, resetTranslateCount } = createFakeTerminal(
+      "hello DEPLOY world",
+      { lineCount: 120 },
+    );
+    term.rows = 30;
+    term.buffer.active.length = 100;
+    term.buffer.active.baseY = 50;
+    term.buffer.active.viewportY = 50;
+    term.buffer.active.cursorY = 29;
+    const highlighter = new KeywordHighlighter(term as never);
+    const rules: KeywordHighlightRule[] = [
+      {
+        id: "deploy",
+        label: "Deploy",
+        patterns: ["DEPLOY"],
+        color: "#F87171",
+        enabled: true,
+      },
+    ];
+
+    highlighter.setRules(rules, true);
+    raf.flush();
+    resetTranslateCount();
+
+    term.buffer.active.length = 101;
+    term.buffer.active.baseY = 51;
+    term.buffer.active.viewportY = 51;
+    term.buffer.active.cursorY = 29;
+    handlers.writeParsed?.();
+    handlers.render?.();
+
+    await new Promise((resolve) => { setTimeout(resolve, 130); });
+    raf.flush();
+
+    assert.ok(
+      getTranslateCount() < term.rows,
+      `expected append refresh to avoid full viewport scan, got ${getTranslateCount()} translated lines`,
+    );
+    assert.ok(
+      getTranslatedLineIndexes().some((lineY) => lineY >= 77 && lineY <= 82),
+      "expected appended output neighborhood to be rescanned",
+    );
+    highlighter.dispose();
+  } finally {
+    raf.restore();
+  }
+});
+
+test("alternate buffer writes defer keyword highlight work but still catch up", async () => {
+  const raf = installAnimationFrameQueue();
+  try {
+    const { term, handlers, getTranslateCount, resetTranslateCount } = createFakeTerminal("hello DEPLOY world", {
+      lineCount: 20,
+    });
+    term.buffer.active.type = "alternate";
+    const highlighter = new KeywordHighlighter(term as never);
+    const rules: KeywordHighlightRule[] = [
+      {
+        id: "deploy",
+        label: "Deploy",
+        patterns: ["DEPLOY"],
+        color: "#F87171",
+        enabled: true,
+      },
+    ];
+
+    highlighter.setRules(rules, true);
+    raf.flush();
+    resetTranslateCount();
+
+    handlers.writeParsed?.();
+    raf.flush();
+    assert.equal(getTranslateCount(), 0);
+
+    await new Promise((resolve) => { setTimeout(resolve, 240); });
+    assert.ok(getTranslateCount() > 0);
+    highlighter.dispose();
+  } finally {
+    raf.restore();
+  }
+});
+
 test("long-line pressure avoids scanning across a whole soft-wrapped logical line", () => {
   const raf = installAnimationFrameQueue();
   try {
