@@ -51,7 +51,7 @@ npm run pack:win-x64  # Windows x64  — macOS 上可执行
 npm run pack:linux    # Linux (AppImage + deb + rpm)
 ```
 
-**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.68` 构建时，`package.json` 中版本号应为 `1.1.68-fork`，生成产物也沿用该版本号。
+**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.70` 构建时，`package.json` 中版本号应为 `1.1.70-fork`，生成产物也沿用该版本号。
 
 **工作原理：** `electron-builder.config.cjs` 读取 `npm_config_arch` 环境变量动态决定构建的 arch：
 
@@ -83,7 +83,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 > 每次 rebase 后运行 `git log --oneline v<upstream-tag>..HEAD` 查看需保留的提交。
 
-### 当前 rebase 基准: v1.1.68
+### 当前 rebase 基准: v1.1.70
 
 ### 1. 一键登录 + 全键盘操作
 
@@ -149,7 +149,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### Rebase 操作备忘
 
-当前基准: **v1.1.68**
+当前基准: **v1.1.70**
 
 ```bash
 git fetch origin --tags
