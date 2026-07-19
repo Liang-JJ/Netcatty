@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nProvider } from "../application/i18n/I18nProvider";
 import QuickConnectWizard from "./QuickConnectWizard";
 import { PROTOCOL_VISUAL_STYLES } from "./protocolVisuals";
+
+const source = readFileSync(new URL("./QuickConnectWizard.tsx", import.meta.url), "utf8");
 
 test("QuickConnectWizard offers ET without obsolete Mosh path or log controls", () => {
   const markup = renderToStaticMarkup(
@@ -103,3 +106,9 @@ test("quick connect credential section title matches protocol section title styl
   assert.match(markup, /text-sm font-medium[^>]*>Credential preset</);
 });
 
+test("quick connect keeps fork credential preset selection in the username step", () => {
+  assert.match(source, /const \[usernameMode, setUsernameMode\]/);
+  assert.match(source, /data-identity-option="true"/);
+  assert.match(source, /case "username":\s+if \(canUseSelectedIdentity\) \{\s+handleConnect\(\);/);
+  assert.match(source, /\(step === "protocol" \|\| step === "username"\) && canUseSelectedIdentity/);
+});
