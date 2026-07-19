@@ -34,6 +34,7 @@ import { PROTOCOL_VISUAL_STYLES } from "./protocolVisuals";
 
 // Wizard steps
 type WizardStep = "protocol" | "username" | "knownhost" | "auth";
+type UsernameMode = "identity" | "custom";
 
 interface QuickConnectWizardProps {
   open: boolean;
@@ -76,6 +77,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
   const [password, setPassword] = useState("");
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
   const [selectedIdentityId, setSelectedIdentityId] = useState<string | null>(null);
+  const [usernameMode, setUsernameMode] = useState<UsernameMode>("identity");
   const [saveOptionsOpen, setSaveOptionsOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const selectedIdentity = useMemo(
@@ -101,6 +103,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
       setPassword("");
       setSelectedKeyId(null);
       setSelectedIdentityId(null);
+      setUsernameMode("identity");
       setSaveOptionsOpen(false);
       setShowPassword(false);
       setKnownHostInfo(null);
@@ -131,6 +134,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
     })),
     [identities],
   );
+  const canChooseIdentityForUsername = protocol !== "telnet" && identities.length > 0;
 
   const detachSelectedIdentity = () => {
     setSelectedIdentityId(null);
@@ -141,6 +145,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
 
   const clearSelectedIdentity = () => {
     detachSelectedIdentity();
+    setUsernameMode("custom");
     setUsername(target.username || "");
   };
 
@@ -152,6 +157,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
     const identity = identities.find((candidate) => candidate.id === identityId);
     if (!identity) return;
     setSelectedIdentityId(identity.id);
+    setUsernameMode("identity");
     setUsername(identity.username);
     setAuthMethod(identity.authMethod);
     setPassword("");
@@ -163,6 +169,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
     setProtocol(proto);
     if (proto === "telnet") {
       if (selectedIdentityId) clearSelectedIdentity();
+      setUsernameMode("custom");
       setAuthMethod("password");
     }
     if (port === getQuickConnectDefaultPort(protocol)) {
@@ -202,6 +209,35 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
     protocolButtonRefs[nextProtocol].current?.focus();
   };
 
+  const handleIdentityOptionKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    identityId: string,
+  ) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (selectedIdentityId === identityId && canUseSelectedIdentity) {
+        handleConnect();
+        return;
+      }
+      handleIdentitySelect(identityId);
+      return;
+    }
+
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const currentIndex = identities.findIndex((identity) => identity.id === identityId);
+    const nextIndex = event.key === "ArrowDown"
+      ? (currentIndex + 1) % identities.length
+      : (currentIndex - 1 + identities.length) % identities.length;
+    const nextIdentity = identities[nextIndex];
+    handleIdentitySelect(nextIdentity.id);
+    const optionButtons = event.currentTarget.parentElement
+      ?.querySelectorAll<HTMLButtonElement>('[data-identity-option="true"]');
+    optionButtons?.[nextIndex]?.focus();
+  };
+
   // Navigate to next step
   const handleContinue = () => {
     switch (step) {
@@ -214,6 +250,10 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
         setStep("username");
         break;
       case "username":
+        if (canUseSelectedIdentity) {
+          handleConnect();
+          break;
+        }
         setStep("auth");
         break;
       case "knownhost":
@@ -272,6 +312,9 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
       case "protocol":
         return true;
       case "username":
+        if (canChooseIdentityForUsername && usernameMode === "identity") {
+          return Boolean(selectedIdentityId && username.trim());
+        }
         return username.trim().length > 0;
       case "knownhost":
         return true;
@@ -286,11 +329,14 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
   }, [
     step,
     username,
+    usernameMode,
     authMethod,
     password,
     selectedKeyId,
     selectedIdentity,
+    selectedIdentityId,
     canUseSelectedIdentity,
+    canChooseIdentityForUsername,
     keys,
     protocol,
   ]);
@@ -534,30 +580,125 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
   );
 
   // Render username step
-  const renderUsernameStep = () => (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="quick-username">{t("terminal.auth.username")}</Label>
-        <Input
-          id="quick-username"
-          value={username}
-          onChange={(e) => {
-            if (selectedIdentityId) detachSelectedIdentity();
-            setUsername(e.target.value);
-          }}
-          placeholder={t("terminal.auth.username.placeholder")}
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && username.trim()) {
-              e.preventDefault();
-              e.stopPropagation();
-              handleContinue();
-            }
-          }}
-        />
+  const renderUsernameStep = () => {
+    const showIdentityList = canChooseIdentityForUsername && usernameMode === "identity";
+
+    return (
+      <div className="space-y-4">
+        {canChooseIdentityForUsername && (
+          <div className="flex gap-1 p-1 bg-secondary/80 rounded-lg border border-border/60">
+            <button
+              type="button"
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all",
+                usernameMode === "identity"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary",
+              )}
+              onClick={() => setUsernameMode("identity")}
+            >
+              <User size={14} />
+              {t("quickConnect.identity.label")}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all",
+                usernameMode === "custom"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary",
+              )}
+              onClick={() => {
+                if (selectedIdentityId) clearSelectedIdentity();
+                setUsernameMode("custom");
+              }}
+            >
+              <User size={14} />
+              {t("terminal.auth.username")}
+            </button>
+          </div>
+        )}
+
+        {showIdentityList ? (
+          <div className="space-y-2">
+            <Label>{t("quickConnect.identity.label")}</Label>
+            <ScrollArea className="max-h-56 pr-2">
+              <div className="space-y-2">
+                {identities.map((identity) => {
+                  const isSelected = selectedIdentityId === identity.id;
+                  const AuthIcon = identity.authMethod === "password" ? Lock : Key;
+
+                  return (
+                    <button
+                      key={identity.id}
+                      type="button"
+                      data-identity-option="true"
+                      aria-pressed={isSelected}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-left outline-none",
+                        isSelected
+                          ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                          : "border-border/50 hover:bg-secondary/50 focus-visible:ring-2 focus-visible:ring-primary/30",
+                      )}
+                      onClick={() => handleIdentitySelect(identity.id)}
+                      onKeyDown={(event) => handleIdentityOptionKeyDown(event, identity.id)}
+                    >
+                      <div
+                        className={cn(
+                          "h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                          isSelected ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        <AuthIcon size={14} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">{identity.label}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {identity.username} · {t(`quickConnect.identity.method.${identity.authMethod}`)}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+            <p className={cn(
+              "text-xs",
+              selectedIdentity && !canUseSelectedIdentity ? "text-destructive" : "text-muted-foreground",
+            )}>
+              {selectedIdentity && !canUseSelectedIdentity
+                ? t("quickConnect.identity.unavailable")
+                : selectedIdentity
+                  ? t("quickConnect.identity.selectedHint", { username: selectedIdentity.username })
+                  : t("quickConnect.identity.hint")}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor="quick-username">{t("terminal.auth.username")}</Label>
+            <Input
+              id="quick-username"
+              value={username}
+              onChange={(e) => {
+                if (selectedIdentityId) detachSelectedIdentity();
+                setUsernameMode("custom");
+                setUsername(e.target.value);
+              }}
+              placeholder={t("terminal.auth.username.placeholder")}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && username.trim()) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleContinue();
+                }
+              }}
+            />
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   // Render known host verification step
   const renderKnownHostStep = () => (
@@ -874,7 +1015,7 @@ const QuickConnectWizard: React.FC<QuickConnectWizardProps> = ({
             </div>
           ) : (
             <Button onClick={handleContinue} disabled={!canProceed}>
-              {step === "protocol" && canUseSelectedIdentity
+              {(step === "protocol" || step === "username") && canUseSelectedIdentity
                 ? t("quickConnect.identity.connect")
                 : t("common.continue")}
             </Button>
