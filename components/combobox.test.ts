@@ -9,6 +9,7 @@ import {
   focusComboboxInput,
   selectComboboxInputIfFocused,
   canComboboxOpen,
+  getComboboxOpenActiveIndex,
   getNextComboboxActiveIndex,
   type ComboboxScrollableTarget,
 } from "./ui/combobox.tsx";
@@ -68,7 +69,7 @@ test("combobox option popovers capture wheel events inside the popup list", () =
 test("Escape closes the picker through the preview-reset path", () => {
   assert.match(
     source,
-    /else if \(e\.key === 'Escape'\) \{\s*handleOpenChange\(false\)\s*\}/,
+    /else if \(e\.key === 'Escape' && open\) \{\s*e\.preventDefault\(\)\s*handleOpenChange\(false\)/,
   );
 });
 
@@ -79,6 +80,21 @@ test("combobox arrow navigation wraps through every selectable option", () => {
   assert.equal(getNextComboboxActiveIndex(-1, 3, -1), 2);
   assert.equal(getNextComboboxActiveIndex(0, 3, -1), 2);
   assert.equal(getNextComboboxActiveIndex(0, 0, 1), -1);
+});
+
+test("combobox keyboard opening starts from the selected option or the requested edge", () => {
+  assert.equal(getComboboxOpenActiveIndex(1, 3), 1);
+  assert.equal(getComboboxOpenActiveIndex(-1, 3, 1), 0);
+  assert.equal(getComboboxOpenActiveIndex(-1, 3, -1), 2);
+  assert.equal(getComboboxOpenActiveIndex(-1, 0), -1);
+});
+
+test("combobox supports mainstream keyboard open, close, and boundary navigation", () => {
+  assert.match(source, /e\.key === 'F4'/);
+  assert.match(source, /e\.altKey && e\.key === 'ArrowDown'/);
+  assert.match(source, /e\.altKey && e\.key === 'ArrowUp'/);
+  assert.match(source, /e\.key === 'Home' \|\| e\.key === 'End'/);
+  assert.match(source, /e\.key === 'Tab' && open/);
 });
 
 test("combobox exposes active-option semantics for keyboard navigation", () => {

@@ -87,13 +87,13 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### 1. 一键登录 + 全键盘操作
 
-**涉及文件**: `components/QuickConnectWizard.tsx`, `components/VaultView.tsx`, `components/vault/VaultViewLayout.tsx`, `domain/host.ts`, `domain/host.test.ts`, `application/i18n/locales/{en,zh-CN}/vault.ts`
+**涉及文件**: `components/QuickConnectWizard.tsx`, `components/ui/combobox.tsx`, `components/VaultView.tsx`, `components/vault/VaultViewLayout.tsx`, `domain/host.ts`, `domain/host.test.ts`, `application/i18n/locales/{en,zh-CN}/vault.ts`
 
-- QuickConnectWizard 第二步默认"从钥匙串选择"页签，选择 Identity 后跳过 auth 步骤
-- QuickConnect 保存主机时按 host/port/auth（含 Keychain Identity 解析后的认证信息）去重；命中已有主机时复用原 host id，避免相同连接创建新主机导致 AI 对话历史等 host 绑定能力失效
-- ArrowUp/Down 切换协议选项，全局 Enter 进下一步，Tab focus trap
-- 左右方向键在页签聚焦时切换"手动输入"/"从钥匙串选择"
-- 切换到手动输入时清理自动填充的密码
+- QuickConnectWizard 保留社区协议首屏的“凭据预设”选择器，并在用户名步骤提供 fork 的“凭据预设/用户名”页签；存在 Identity 时默认打开凭据页签
+- QuickConnect 保存主机时按 host/port/auth（含 Keychain Identity 解析后的认证信息）去重；命中已有主机时复用原 host id，未命中时创建新主机，避免相同连接重复创建导致 AI 对话历史等 host 绑定能力失效
+- 首屏凭据选择器支持 Enter、F4、Alt+ArrowUp/Down、Home/End、Escape；第二步页签支持方向键、Home/End、Enter/Space，凭据列表支持 ArrowUp/Down、Home/End、Enter/Space
+- 进入用户名步骤或切回“凭据预设”页签时，焦点直接落到已选凭据或第一项；Tab/Shift+Tab 在当前面板和向导操作按钮间遍历并保持在向导内循环
+- 所有 QuickConnect 完成入口（预设凭据、手工密码、密钥、按钮与 Enter）都先保存或复用主机再建立会话，不保留绕过主机列表的临时连接入口
 - `VaultViewLayout.tsx` 传递 `identities` prop
 
 ### 2. 侧边栏 Pin 按钮

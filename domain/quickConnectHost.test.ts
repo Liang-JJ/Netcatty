@@ -43,6 +43,23 @@ test("quick connect keeps a selected credential preset as the host identity", ()
   assert.equal(resolved.password, "resolved-secret");
 });
 
+test("saved credential preset connections are persisted instead of remaining ephemeral", () => {
+  const host = buildQuickConnectHost({
+    id: "quick-saved-preset",
+    createdAt: 123,
+    target,
+    protocol: "ssh",
+    port: 22,
+    username: "root",
+    authMethod: "password",
+    selectedIdentityId: "identity-root",
+    save: true,
+  });
+
+  assert.equal(host.identityId, "identity-root");
+  assert.equal(host.ephemeral, false);
+});
+
 test("quick connect only offers one-click connection for usable credential presets", () => {
   assert.equal(isQuickConnectIdentityUsable({
     id: "password",

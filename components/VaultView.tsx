@@ -60,9 +60,8 @@ import {
   applyGroupDefaults,
 } from "../domain/groupConfig";
 import {
-  buildQuickConnectReusableHost,
-  findEquivalentQuickConnectHost,
   getEffectiveHostDistro,
+  resolveQuickConnectHostSave,
   resolveTelnetPassword,
   resolveTelnetPort,
   resolveTelnetUsername,
@@ -645,15 +644,14 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   // Handle quick connect save host
   const handleQuickConnectSaveHost = useCallback(
     (host: Host) => {
-      const existingHost = findEquivalentQuickConnectHost({
+      const resolved = resolveQuickConnectHostSave({
         hosts,
         candidate: host,
         keys,
         identities,
       });
-      if (existingHost) return buildQuickConnectReusableHost(existingHost, host);
-      onUpdateHosts([...hosts, host]);
-      return host;
+      if (!resolved.reused) onUpdateHosts(resolved.nextHosts);
+      return resolved.host;
     },
     [hosts, identities, keys, onUpdateHosts],
   );
