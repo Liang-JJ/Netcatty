@@ -25,10 +25,10 @@ interface ComboboxProps {
     triggerClassName?: string;
     inputStyle?: React.CSSProperties;
     onInputValueChange?: (value: string) => void;
+    ariaLabel?: string;
     disabled?: boolean;
     clearable?: boolean;
     selectValueOnFocus?: boolean;
-    ariaLabel?: string;
 }
 
 export const comboboxWheelDeltaToPixels = (deltaY: number, deltaMode: number): number => {
@@ -101,6 +101,16 @@ export const selectComboboxInputIfFocused = (
 export const canComboboxOpen = (disabled: boolean, nextOpen: boolean): boolean =>
     !disabled || !nextOpen
 
+export const getComboboxOpenActiveIndex = (
+    selectedIndex: number,
+    optionCount: number,
+    direction: 1 | -1 = 1,
+): number => {
+    if (optionCount <= 0) return -1
+    if (selectedIndex >= 0 && selectedIndex < optionCount) return selectedIndex
+    return direction === 1 ? 0 : optionCount - 1
+}
+
 function ComboboxOptionsList({
     children,
     id,
@@ -145,10 +155,10 @@ export function Combobox({
     triggerClassName,
     inputStyle,
     onInputValueChange,
+    ariaLabel,
     disabled = false,
     clearable = true,
     selectValueOnFocus = false,
-    ariaLabel,
 }: ComboboxProps) {
     const [open, setOpen] = React.useState(false)
     const [inputValue, setInputValue] = React.useState("")
@@ -196,6 +206,10 @@ export function Combobox({
 
     const selectableOptionCount = filteredOptions.length + (showCreateOption ? 1 : 0)
     const hasActiveOption = activeIndex >= 0 && activeIndex < selectableOptionCount
+    const selectedOptionIndex = filteredOptions.findIndex((option) => option.value === value)
+    const selectedSelectableIndex = selectedOptionIndex < 0
+        ? -1
+        : selectedOptionIndex + (showCreateOption ? 1 : 0)
 
     React.useEffect(() => {
         activeOptionRef.current?.scrollIntoView({ block: 'nearest' })
@@ -253,7 +267,9 @@ export function Combobox({
     const handleOpenChange = (nextOpen: boolean) => {
         if (!canComboboxOpen(disabled, nextOpen)) return
         setOpen(nextOpen)
-        setActiveIndex(-1)
+        setActiveIndex(nextOpen
+            ? getComboboxOpenActiveIndex(selectedSelectableIndex, selectableOptionCount)
+            : -1)
         if (nextOpen) {
             if (selectValueOnFocus) {
                 // Opening a closed picker from its chevron should also replace on first keystroke.
@@ -265,14 +281,46 @@ export function Combobox({
     }
 
     const handleInputKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (e.key === 'F4') {
             e.preventDefault()
-            if (!open) setOpen(true)
+            handleOpenChange(!open)
+        } else if (e.altKey && e.key === 'ArrowDown') {
+            e.preventDefault()
+            if (!open) handleOpenChange(true)
+        } else if (e.altKey && e.key === 'ArrowUp') {
+            if (!open) return
+            e.preventDefault()
+            handleOpenChange(false)
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault()
             const direction = e.key === 'ArrowDown' ? 1 : -1
-            setActiveIndex((current) =>
-                getNextComboboxActiveIndex(current, selectableOptionCount, direction)
-            )
+            if (!open) {
+                setOpen(true)
+                setActiveIndex(getComboboxOpenActiveIndex(
+                    selectedSelectableIndex,
+                    selectableOptionCount,
+                    direction,
+                ))
+            } else {
+                setActiveIndex((current) =>
+                    getNextComboboxActiveIndex(current, selectableOptionCount, direction)
+                )
+            }
+        } else if (open && !isSearching && (e.key === 'Home' || e.key === 'End')) {
+            e.preventDefault()
+            setActiveIndex(getComboboxOpenActiveIndex(
+                -1,
+                selectableOptionCount,
+                e.key === 'Home' ? 1 : -1,
+            ))
         } else if (e.key === 'Enter') {
+            if (!open) {
+                // Let an enclosing form or dialog handle Enter once a value is selected.
+                if (value || selectableOptionCount === 0) return
+                e.preventDefault()
+                handleOpenChange(true)
+                return
+            }
             e.preventDefault()
             if (hasActiveOption) {
                 if (showCreateOption && activeIndex === 0) {
@@ -287,7 +335,10 @@ export function Combobox({
             } else if (filteredOptions.length === 1) {
                 handleSelect(filteredOptions[0].value)
             }
-        } else if (e.key === 'Escape') {
+        } else if (e.key === 'Escape' && open) {
+            e.preventDefault()
+            handleOpenChange(false)
+        } else if (e.key === 'Tab' && open) {
             handleOpenChange(false)
         }
     }
@@ -326,6 +377,7 @@ export function Combobox({
                         aria-label={ariaLabel}
                         aria-autocomplete="list"
                         aria-expanded={open && !disabled}
+                        aria-haspopup="listbox"
                         aria-controls={listboxId}
                         aria-activedescendant={
                             open && !disabled && hasActiveOption

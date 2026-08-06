@@ -106,9 +106,28 @@ test("quick connect credential section title matches protocol section title styl
   assert.match(markup, /text-sm font-medium[^>]*>Credential preset</);
 });
 
-test("quick connect keeps fork credential preset selection in the username step", () => {
-  assert.match(source, /const \[usernameMode, setUsernameMode\]/);
-  assert.match(source, /data-identity-option="true"/);
-  assert.match(source, /case "username":\s+if \(canUseSelectedIdentity\) \{\s+handleConnect\(\);/);
-  assert.match(source, /\(step === "protocol" \|\| step === "username"\) && canUseSelectedIdentity/);
+test("every quick connect completion path persists or reuses the host", () => {
+  assert.match(source, /const handleConnect = \(\) =>/);
+  assert.match(source, /save: true/);
+  assert.match(source, /const hostToConnect = onSaveHost \? onSaveHost\(tempHost\) : tempHost/);
+  assert.match(source, /case "auth":\s+handleConnect\(\);/);
+  assert.match(source, /disabled=\{!canProceed\} onClick=\{handleConnect\}/);
+  assert.doesNotMatch(source, /handleConnect\((?:true|false)\)/);
+});
+
+test("username credential presets use keyboard-accessible tabs and listbox navigation", () => {
+  assert.match(source, /type UsernameMode = "identity" \| "custom"/);
+  assert.match(source, /identities\.length > 0 \? "identity" : "custom"/);
+  assert.match(source, /role="tablist"/);
+  assert.match(source, /role="tab"/);
+  assert.match(source, /role="listbox"/);
+  assert.match(source, /role="option"/);
+  assert.match(source, /event\.key === "ArrowLeft" \|\| event\.key === "ArrowUp"/);
+  assert.match(source, /event\.key === "ArrowDown" \|\| event\.key === "ArrowUp"/);
+  assert.match(source, /event\.key === "Home"/);
+  assert.match(source, /event\.key === "End"/);
+  assert.match(source, /step === "username" && usernameMode === "identity"/);
+  assert.match(source, /\[data-identity-option="true"\]\[tabindex="0"\]/);
+  assert.match(source, /\(identityOption \|\| firstFocusable\)\?\.focus\(\)/);
+  assert.match(source, /button:not\(\[disabled\]\):not\(\[tabindex="-1"\]\)/);
 });

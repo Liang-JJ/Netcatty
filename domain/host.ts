@@ -454,10 +454,47 @@ export const buildQuickConnectReusableHost = (savedHost: Host, quickConnectHost:
     protocol: quickConnectHost.protocol,
     port: quickConnectHost.port,
     moshEnabled: quickConnectHost.moshEnabled,
+    etEnabled: quickConnectHost.etEnabled,
   };
+  if (quickConnectHost.etPort !== undefined) next.etPort = quickConnectHost.etPort;
   if (quickConnectHost.telnetEnabled !== undefined) next.telnetEnabled = quickConnectHost.telnetEnabled;
   if (quickConnectHost.telnetPort !== undefined) next.telnetPort = quickConnectHost.telnetPort;
   return next;
+};
+
+export const resolveQuickConnectHostSave = ({
+  hosts,
+  candidate,
+  keys = [],
+  identities = [],
+}: {
+  hosts: Host[];
+  candidate: Host;
+  keys?: SSHKey[];
+  identities?: Identity[];
+}): { host: Host; nextHosts: Host[]; reused: boolean } => {
+  const existingHost = findEquivalentQuickConnectHost({
+    hosts,
+    candidate,
+    keys,
+    identities,
+  });
+  if (existingHost) {
+    return {
+      host: buildQuickConnectReusableHost(existingHost, candidate),
+      nextHosts: hosts,
+      reused: true,
+    };
+  }
+
+  const persistedHost = candidate.ephemeral === false
+    ? candidate
+    : { ...candidate, ephemeral: false };
+  return {
+    host: persistedHost,
+    nextHosts: [...hosts, persistedHost],
+    reused: false,
+  };
 };
 
 export const upsertHostById = (hosts: Host[], host: Host): Host[] => {

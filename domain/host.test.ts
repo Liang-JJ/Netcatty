@@ -13,6 +13,7 @@ import {
   normalizeDistroId,
   normalizePrimaryTelnetState,
   preserveConcurrentHostLineTimestampUpdate,
+  resolveQuickConnectHostSave,
   resolveHostKeepalive,
   resolveTelnetPort,
   resolveTelnetPassword,
@@ -252,12 +253,61 @@ test("buildQuickConnectReusableHost keeps the saved id while honoring quick tran
     id: "quick-host",
     label: "Quick label",
     moshEnabled: false,
+    etEnabled: true,
+    etPort: 2022,
   });
 
   assert.deepEqual(buildQuickConnectReusableHost(existing, quickConnect), {
     ...existing,
     moshEnabled: false,
+    etEnabled: true,
+    etPort: 2022,
   });
+});
+
+test("resolveQuickConnectHostSave appends a new persistent host", () => {
+  const existing = makeHost({ id: "other-host", hostname: "other.example.com" });
+  const quickConnect = makeHost({
+    id: "quick-host",
+    hostname: "new.example.com",
+    password: "secret",
+    ephemeral: true,
+  });
+
+  const resolved = resolveQuickConnectHostSave({
+    hosts: [existing],
+    candidate: quickConnect,
+  });
+
+  assert.equal(resolved.reused, false);
+  assert.equal(resolved.host.id, "quick-host");
+  assert.equal(resolved.host.ephemeral, false);
+  assert.deepEqual(resolved.nextHosts, [existing, resolved.host]);
+});
+
+test("resolveQuickConnectHostSave reuses an equivalent saved host without appending", () => {
+  const existing = makeHost({
+    id: "saved-host",
+    hostname: "example.com",
+    username: "alice",
+    password: "secret",
+  });
+  const quickConnect = makeHost({
+    id: "quick-host",
+    hostname: "EXAMPLE.COM",
+    username: "alice",
+    password: "secret",
+    ephemeral: false,
+  });
+
+  const resolved = resolveQuickConnectHostSave({
+    hosts: [existing],
+    candidate: quickConnect,
+  });
+
+  assert.equal(resolved.reused, true);
+  assert.equal(resolved.host.id, "saved-host");
+  assert.deepEqual(resolved.nextHosts, [existing]);
 });
 
 test("telnet credential helpers preserve explicitly cleared values", () => {
