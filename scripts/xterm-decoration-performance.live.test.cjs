@@ -50,7 +50,7 @@ if (!process.versions.electron) {
     });
     await window.loadURL(
       "data:text/html;charset=utf-8," + encodeURIComponent(
-        "<!doctype html><style>html,body,#terminal{width:800px;height:480px;margin:0}</style><div id=terminal></div>",
+        "<!doctype html><style>html,body{margin:0}#terminal,#tail{width:800px;height:480px}</style><div id=terminal></div><div id=tail></div>",
       ),
     );
 
@@ -183,6 +183,87 @@ if (!process.versions.electron) {
       decorations.forEach(decoration => decoration.dispose());
       markers.forEach(marker => marker.dispose());
       term.dispose();
+
+      const tailTerm = new Terminal({
+        allowProposedApi: true,
+        cols: 160,
+        cursorBlink: false,
+        rendererType: "dom",
+        rows: 30,
+        scrollback: 3000,
+      });
+      tailTerm.open(document.getElementById("tail"));
+      const tailHighlighter = new KeywordHighlighter(tailTerm);
+      tailHighlighter.setRules([
+        { enabled: true, patterns: ["INFO"], color: "#60a5fa" },
+        { enabled: true, patterns: ["WARN"], color: "#fbbf24" },
+        { enabled: true, patterns: ["ERROR"], color: "#f87171" },
+        { enabled: true, patterns: ["SUCCESS"], color: "#4ade80" },
+        { enabled: true, patterns: ["DEBUG"], color: "#a78bfa" },
+        { enabled: true, patterns: ["request_id=[a-z0-9-]+"], color: "#2dd4bf" },
+        { enabled: true, patterns: ["latency=\\d+ms"], color: "#fb7185" },
+        { enabled: true, patterns: ["status=5\\d\\d"], color: "#f43f5e" },
+        { enabled: true, patterns: ["user=[A-Za-z0-9_]+"], color: "#38bdf8" },
+        { enabled: true, patterns: ["(?:completed|failed|critical)"], color: "#f97316" },
+      ], true);
+
+      const tailWriteLatencies = [];
+      let heartbeatAt = performance.now();
+      let maxEventLoopLagMs = 0;
+      const heartbeat = setInterval(() => {
+        const now = performance.now();
+        maxEventLoopLagMs = Math.max(maxEventLoopLagMs, now - heartbeatAt - 16);
+        heartbeatAt = now;
+      }, 16);
+      const tailStartedAt = performance.now();
+      for (let batch = 0; batch < 20; batch += 1) {
+        let chunk = "";
+        for (let line = 0; line < 100; line += 1) {
+          const id = batch * 100 + line;
+          chunk += "INFO WARN ERROR SUCCESS DEBUG request_id=req-" + id
+            + " latency=" + (id % 900) + "ms status=500 user=user" + (id % 32)
+            + " completed failed critical payload=" + id + "\\r\\n";
+        }
+        const submittedAt = performance.now();
+        await new Promise(resolve => {
+          tailTerm.write(chunk, () => {
+            tailWriteLatencies.push(performance.now() - submittedAt);
+            resolve();
+          });
+        });
+        if (batch < 19) await new Promise(resolve => setTimeout(resolve, 140));
+      }
+      const tailStreamMs = performance.now() - tailStartedAt;
+      await new Promise(resolve => setTimeout(resolve, 700));
+      clearInterval(heartbeat);
+
+      const tailDecorationCount = Array.from(tailHighlighter.lineDecorations.values())
+        .reduce((count, lineState) => count + lineState.decorations.length, 0);
+      const tailRefreshMs = await new Promise((resolve, reject) => {
+        const startedAt = performance.now();
+        const timeout = setTimeout(() => {
+          disposable.dispose();
+          reject(new Error("timed out waiting for tail refresh"));
+        }, 15000);
+        const disposable = tailTerm.onRender(() => {
+          disposable.dispose();
+          waitForPaint().then(() => {
+            clearTimeout(timeout);
+            resolve(performance.now() - startedAt);
+          }, reject);
+        });
+        tailTerm.refresh(0, tailTerm.rows - 1);
+      });
+      state.tail = {
+        decorationCount: tailDecorationCount,
+        streamMs: tailStreamMs,
+        writeWorkMs: tailWriteLatencies.reduce((sum, value) => sum + value, 0),
+        maxWriteLatencyMs: Math.max(...tailWriteLatencies),
+        maxEventLoopLagMs,
+        refreshMs: tailRefreshMs,
+      };
+      tailHighlighter.dispose();
+      tailTerm.dispose();
       return state;
     })()`);
 
@@ -196,6 +277,23 @@ if (!process.versions.electron) {
     assert.ok(
       result.worstRefreshMs < 150,
       `dense keyword-style decorations blocked terminal repaint: ${JSON.stringify(result)}`,
+    );
+    assert.ok(result.tail.decorationCount >= 280, JSON.stringify(result));
+    assert.ok(
+      result.tail.writeWorkMs < 2000,
+      `10-rule tail output consumed too much write time: ${JSON.stringify(result)}`,
+    );
+    assert.ok(
+      result.tail.maxWriteLatencyMs < 250,
+      `10-rule tail output stalled a write batch: ${JSON.stringify(result)}`,
+    );
+    assert.ok(
+      result.tail.maxEventLoopLagMs < 250,
+      `10-rule tail output blocked the renderer: ${JSON.stringify(result)}`,
+    );
+    assert.ok(
+      result.tail.refreshMs < 150,
+      `10-rule tail highlighting blocked terminal repaint: ${JSON.stringify(result)}`,
     );
     process.stdout.write(`XTERM_DECORATION_PERFORMANCE_OK ${JSON.stringify(result)}\n`);
     cleanup(0);
