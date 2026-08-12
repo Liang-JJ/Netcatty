@@ -3,7 +3,7 @@
   "description": "Netcatty is a modern SSH manager and terminal app with host grouping, SFTP, keychain, port forwarding, and a rich UI.",
   "homepage": "https://github.com/binaricat/Netcatty",
   "private": true,
-  "version": "1.1.75-fork",
+  "version": "1.1.78-fork",
   "type": "module",
   "workspaces": [
     "packages/*",
