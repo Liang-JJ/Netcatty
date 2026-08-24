@@ -34,10 +34,10 @@ npm run pack:win-x64
 - Components use `const { t } = useI18n()` to translate. When adding new UI text, add keys to at least `en/` and `zh-CN/`.
 
 ### Keyword Highlight（关键词高亮）
-- **类**: `KeywordHighlighter` 在 `components/terminal/keywordHighlight.ts`，使用 xterm.js 的 `registerDecoration()` API 叠加颜色，不修改数据流。
+- **类**: `KeywordHighlighter` 在 `components/terminal/keywordHighlight.ts`，直接重着色 xterm.js buffer cell 的前景色，不修改数据流。
 - **规则定义**: `DEFAULT_KEYWORD_HIGHLIGHT_RULES` 在 `domain/models/terminal.ts`，含 6 个内置规则。用户可在 Settings > Terminal > Keyword Highlighting 全局配置，也可按 host 覆盖。
-- **性能**: 基于上游 v1.1.78 的 xterm decoration 与 Enter 输入保护优化，采用 100ms debounce、写入压力自适应节流、4ms 脏区预算和 1200 条 LRU 缓存；`scripts/xterm-decoration-performance.live.test.cjs` 覆盖 10 条规则、2000 行持续日志输出。
-- **alternate buffer 行为**: **不要**在 alternate buffer 中禁用高亮。`less`/`more` 使用 alternate buffer 但不管理高亮，用户查看日志时需要 keyword highlight。vim/htop 的重绘由 debounce + rAF 节流削峰。
+- **性能**: 基于上游 v1.1.81 的 buffer cell 前景色重着色引擎，普通写入仅处理受影响的逻辑行，大批量输出通过写入压力检测和 quiet catch-up 合并扫描；`scripts/xterm-keyword-highlight-{performance,throughput}.live.test.cjs` 覆盖真实 Electron/WebGL 写入与吞吐压力。
+- **alternate buffer 行为**: **不要**在 alternate buffer 中禁用高亮。`less`/`more` 使用 alternate buffer 但不管理高亮，fork 使用 220ms quiet refresh 在输出稳定后扫描当前视口，避免 vim/htop 连续重绘时逐写入执行正则匹配。
 
 ### 跨平台构建
 
@@ -51,7 +51,7 @@ npm run pack:win-x64  # Windows x64  — macOS 上可执行
 npm run pack:linux    # Linux (AppImage + deb + rpm)
 ```
 
-**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.78` 构建时，`package.json` 中版本号应为 `1.1.78-fork`，生成产物也沿用该版本号。
+**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.81` 构建时，`package.json` 中版本号应为 `1.1.81-fork`，生成产物也沿用该版本号。
 
 **工作原理：** `electron-builder.config.cjs` 读取 `npm_config_arch` 环境变量动态决定构建的 arch：
 
@@ -83,7 +83,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 > 每次 rebase 后运行 `git log --oneline v<upstream-tag>..HEAD` 查看需保留的提交。
 
-### 当前 rebase 基准: v1.1.78
+### 当前 rebase 基准: v1.1.81
 
 ### 1. 一键登录 + 全键盘操作
 
@@ -109,11 +109,11 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 **涉及文件**: `components/terminal/keywordHighlight.ts`, `components/terminal/keywordHighlight.test.ts`
 
-- 移除 `triggerRefresh`、`executeRefresh` 和分片滚动刷新中的 alternate buffer 禁用高亮逻辑
-- tail -f 等 append 输出导致 viewport render 变化时，不把整屏标脏，只扫描新增输出附近
-- alternate buffer 写入采用 220ms quiet debounce，保留 less/more 高亮能力，同时避免翻页/全屏重绘持续抢占
-- 保留 v1.1.78 的 xterm decoration、Enter 输入保护优化和实时性能基准；不要降级 xterm 或恢复整屏写入扫描
-- **rebase 高频冲突**: 上游持续优化该文件的写入节流、dirty range、render/scroll 刷新路径。每次 rebase 都需要保留 less/more alternate buffer 高亮，不恢复 `buffer.active.type === 'alternate'` 早退；同时保留 tail -f append 输出只扫新增脏区的逻辑
+- 在上游 v1.1.81 的 cell 重着色引擎上允许 `recolorVisible` / `recolorRange` 处理 alternate buffer
+- alternate buffer 写入采用独立的 220ms quiet refresh，保留 less/more 高亮能力，同时避免翻页/全屏重绘持续抢占
+- normal buffer 的 tail -f / 持续日志继续使用上游的 output-pressure bypass、逻辑行局部重着色和 quiet catch-up，不恢复旧 decoration/全屏扫描实现
+- 序列化、clear/reset 和规则变更需要恢复 normal/alternate 两套 buffer 的原始前景色，避免高亮颜色泄漏
+- **rebase 高频冲突**: 上游持续优化该文件的写入和 catch-up 路径。每次 rebase 都需要保留 less/more alternate buffer 的 quiet refresh，同时优先沿用上游最新 normal-buffer 性能实现
 
 ### 4. 跨平台构建兼容
 
@@ -150,7 +150,7 @@ npm run pack:linux    # Linux (AppImage + deb + rpm)
 
 ### Rebase 操作备忘
 
-当前基准: **v1.1.78**
+当前基准: **v1.1.81**
 
 ```bash
 git fetch origin --tags

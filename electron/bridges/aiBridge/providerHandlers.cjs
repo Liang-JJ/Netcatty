@@ -1,4 +1,6 @@
 /* eslint-disable no-undef */
+const { extractSseDataPayload } = require("../ai/sseDataLine.cjs");
+
 function registerProviderHandlers(ctx) {
   with (ctx) {
   ipcMain.handle("netcatty:ai:user-skills:status", async (event) => {
@@ -450,20 +452,21 @@ function registerProviderHandlers(ctx) {
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
           for (const line of lines) {
-            const trimmed = line.trim();
-            if (trimmed.startsWith("data: ")) {
+            const payload = extractSseDataPayload(line);
+            if (payload !== null) {
               safeSend(event.sender, "netcatty:ai:stream:data", {
                 requestId,
-                data: trimmed.slice(6),
+                data: payload,
               });
             }
           }
         }
 
-        if (buffer.trim().startsWith("data: ")) {
+        const trailingPayload = extractSseDataPayload(buffer);
+        if (trailingPayload !== null) {
           safeSend(event.sender, "netcatty:ai:stream:data", {
             requestId,
-            data: buffer.trim().slice(6),
+            data: trailingPayload,
           });
         }
         safeSend(event.sender, "netcatty:ai:stream:end", { requestId });

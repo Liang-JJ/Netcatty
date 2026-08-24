@@ -171,7 +171,7 @@ test("line anchors are evaluated per output line", async () => {
   term.dispose();
 });
 
-test("alternate-screen programs are not keyword-colored", async () => {
+test("alternate-screen output is keyword-colored after writes settle", async () => {
   const term = new XTerm({ allowProposedApi: true, cols: 80, rows: 5, scrollback: 20 });
   const highlighter = new KeywordHighlighter(term);
   highlighter.setRules(rule(), true);
@@ -179,7 +179,19 @@ test("alternate-screen programs are not keyword-colored", async () => {
   assert.equal(cellRgb(term, 0, "ERROR"), RED);
   await write(term, "\x1b[?1049hTUI ERROR");
   assert.notEqual(cellRgb(term, 0, "ERROR"), RED);
+  await highlighter.whenSettled();
+  assert.equal(cellRgb(term, 0, "ERROR"), RED);
   await write(term, "\x1b[?1049l");
+  assert.equal(cellRgb(term, 0, "ERROR"), RED);
+  highlighter.dispose();
+  term.dispose();
+});
+
+test("enabling rules while alternate-screen output is visible colors it immediately", async () => {
+  const term = new XTerm({ allowProposedApi: true, cols: 80, rows: 5, scrollback: 20 });
+  const highlighter = new KeywordHighlighter(term);
+  await write(term, "\x1b[?1049hTUI ERROR");
+  highlighter.setRules(rule(), true);
   assert.equal(cellRgb(term, 0, "ERROR"), RED);
   highlighter.dispose();
   term.dispose();
@@ -991,7 +1003,7 @@ test("catch-up does not hang when the terminal enters the alternate screen", asy
   await write(term, "\x1b[?1049hTUI");
   await Promise.race([
     highlighter.whenSettled(),
-    new Promise((_, reject) => setTimeout(() => reject(new Error("whenSettled hung")), 200)),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("whenSettled hung")), 500)),
   ]);
   highlighter.dispose();
   term.dispose();

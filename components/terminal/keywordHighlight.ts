@@ -70,6 +70,7 @@ const RECOLOR_SLICE_LINES = 32;
 const RECOLOR_SLICE_BUDGET_MS = 4;
 const BULK_WRITE_LINE_BREAKS = 8;
 const MAX_LOGICAL_LINE_ROWS = 128;
+const ALTERNATE_BUFFER_QUIET_MS = 220;
 
 const withRgbFg = (originalFg: number, rgb: number): number => (
   (originalFg & STYLE_MASK) | CM_RGB | (rgb & 0xffffff)
@@ -229,6 +230,10 @@ export class KeywordHighlighter implements IDisposable {
   private catchUpCounted = false;
   private catchUpRunning = false;
   private catchUpGeneration = 0;
+  private alternateRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private alternateRefreshDueAt = 0;
+  private alternateRefreshPromise: Promise<void> = Promise.resolve();
+  private resolveAlternateRefresh: (() => void) | null = null;
   private ruleGeneration = 0;
   private readonly coloredGeneration = new WeakMap<InternalBufferLine, number>();
   private lastViewportY = 0;
@@ -294,7 +299,11 @@ export class KeywordHighlighter implements IDisposable {
         this.recolorVisible();
       }),
       term.buffer.onBufferChange(() => {
-        if (this.term.buffer.active.type !== "normal") return;
+        if (this.term.buffer.active.type === "alternate") {
+          this.scheduleAlternateRefresh();
+          return;
+        }
+        this.cancelAlternateRefresh();
         if (this.hasPendingCatchUp()) this.scheduleCatchUp();
       }),
     );
@@ -332,7 +341,13 @@ export class KeywordHighlighter implements IDisposable {
 
   async whenSettled(): Promise<void> {
     while (!this.disposed) {
-      if (this.term.buffer.active.type !== "normal") return;
+      if (this.term.buffer.active.type === "alternate") {
+        const refresh = this.alternateRefreshPromise;
+        await refresh;
+        if (this.alternateRefreshTimer === null) return;
+        await yieldToRenderer();
+        continue;
+      }
       const catchUp = this.catchUpPromise;
       await catchUp;
       if (this.catchUpTimer === null && !this.catchUpRunning) return;
@@ -371,6 +386,7 @@ export class KeywordHighlighter implements IDisposable {
     }
     if (this.catchUpTimer !== null) clearTimeout(this.catchUpTimer);
     this.catchUpTimer = null;
+    this.cancelAlternateRefresh();
     this.resolveCatchUp?.();
     this.resolveCatchUp = null;
     this.catchUpStartMarker?.dispose();
@@ -383,10 +399,10 @@ export class KeywordHighlighter implements IDisposable {
     const originModeNeedsSafety = this.trackAbsoluteOriginMode(data);
     const absoluteControls = this.collectAbsoluteControls(data);
     const startedOnNormal = this.term.buffer.active.type === "normal";
+    this.hasOutput = true;
     if (!startedOnNormal && this.compiledPatterns.length === 0 && !this.hasPendingCatchUp()) {
       return this.originalWrite(data, callback);
     }
-    this.hasOutput = startedOnNormal || this.hasOutput;
     if (this.compiledPatterns.length === 0 && !this.hasPendingCatchUp() && startedOnNormal) {
       return this.originalWrite(data, callback);
     }
@@ -402,6 +418,9 @@ export class KeywordHighlighter implements IDisposable {
         this.scheduleCatchUp();
       }
       return this.originalWrite(data, () => {
+        if (this.term.buffer.active.type === "alternate") {
+          this.scheduleAlternateRefresh();
+        }
         if (this.term.buffer.active.type === "normal" && !startedOnNormal) {
           if (this.enabled || this.compiledPatterns.length > 0) {
             this.markCatchUp(0);
@@ -528,6 +547,7 @@ export class KeywordHighlighter implements IDisposable {
       } else if (startedOnNormal && (this.enabled || this.compiledPatterns.length > 0)) {
         this.markCatchUp(writeMarker && !writeMarker.isDisposed ? writeMarker.line : 0);
         this.scheduleCatchUp();
+        this.scheduleAlternateRefresh();
       }
       writeMarker?.dispose();
       callback?.();
@@ -652,6 +672,7 @@ export class KeywordHighlighter implements IDisposable {
   private readonly reset: XTerm["reset"] = () => {
     this.clearStoredOriginals();
     this.cancelCatchUp();
+    this.cancelAlternateRefresh();
     this.hasOutput = false;
     this.absoluteControlTail = "";
     this.absoluteOriginControlTail = "";
@@ -799,6 +820,48 @@ export class KeywordHighlighter implements IDisposable {
     this.resolveCatchUp = null;
   }
 
+  private scheduleAlternateRefresh(): void {
+    if (
+      this.disposed
+      || this.term.buffer.active.type !== "alternate"
+      || this.compiledPatterns.length === 0
+    ) return;
+    if (!this.resolveAlternateRefresh) {
+      this.alternateRefreshPromise = new Promise((resolve) => {
+        this.resolveAlternateRefresh = resolve;
+      });
+    }
+    this.alternateRefreshDueAt = performance.now() + ALTERNATE_BUFFER_QUIET_MS;
+    if (this.alternateRefreshTimer !== null) return;
+    const arm = (): void => {
+      const wait = Math.max(1, this.alternateRefreshDueAt - performance.now());
+      this.alternateRefreshTimer = setTimeout(() => {
+        this.alternateRefreshTimer = null;
+        if (this.disposed || this.term.buffer.active.type !== "alternate") {
+          this.resolveAlternateRefresh?.();
+          this.resolveAlternateRefresh = null;
+          return;
+        }
+        if (performance.now() < this.alternateRefreshDueAt) {
+          arm();
+          return;
+        }
+        this.recolorVisible();
+        this.resolveAlternateRefresh?.();
+        this.resolveAlternateRefresh = null;
+      }, wait);
+    };
+    arm();
+  }
+
+  private cancelAlternateRefresh(): void {
+    if (this.alternateRefreshTimer !== null) clearTimeout(this.alternateRefreshTimer);
+    this.alternateRefreshTimer = null;
+    this.alternateRefreshDueAt = 0;
+    this.resolveAlternateRefresh?.();
+    this.resolveAlternateRefresh = null;
+  }
+
   private async runCatchUp(): Promise<void> {
     if (this.disposed || this.resolveCatchUpY() === null || this.catchUpRunning) return;
     const generation = this.catchUpGeneration;
@@ -863,7 +926,6 @@ export class KeywordHighlighter implements IDisposable {
 
   private recolorVisible(): void {
     const buffer = this.term.buffer.active;
-    if (buffer.type !== "normal") return;
     const start = buffer.viewportY;
     const end = Math.min(buffer.length - 1, start + this.term.rows - 1);
     this.recolorRange(start, end, true, false);
@@ -871,7 +933,6 @@ export class KeywordHighlighter implements IDisposable {
 
   private recolorRange(startY: number, endY: number, refresh: boolean, force: boolean): void {
     const buffer = this.term.buffer.active;
-    if (buffer.type !== "normal") return;
     const first = Math.max(0, Math.min(startY, endY));
     const last = Math.min(buffer.length - 1, Math.max(startY, endY));
     if (last < first) return;
@@ -1041,8 +1102,9 @@ export class KeywordHighlighter implements IDisposable {
   }
 
   private restoreBuffer(): void {
-    const buffer = this.term.buffer.normal;
-    for (let y = 0; y < buffer.length; y += 1) this.restorePhysicalLine(y, buffer);
+    for (const buffer of [this.term.buffer.normal, this.term.buffer.alternate]) {
+      for (let y = 0; y < buffer.length; y += 1) this.restorePhysicalLine(y, buffer);
+    }
   }
 
   private ensureOriginals(line: InternalBufferLine): LineOriginals {
@@ -1071,12 +1133,13 @@ export class KeywordHighlighter implements IDisposable {
   }
 
   private clearStoredOriginals(): void {
-    const buffer = this.term.buffer.normal;
-    for (let y = 0; y < buffer.length; y += 1) {
-      const internal = getInternalLine(buffer.getLine(y));
-      if (internal) {
-        this.originals.delete(internal);
-        this.fingerprints.delete(internal);
+    for (const buffer of [this.term.buffer.normal, this.term.buffer.alternate]) {
+      for (let y = 0; y < buffer.length; y += 1) {
+        const internal = getInternalLine(buffer.getLine(y));
+        if (internal) {
+          this.originals.delete(internal);
+          this.fingerprints.delete(internal);
+        }
       }
     }
   }
