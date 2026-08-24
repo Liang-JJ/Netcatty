@@ -53,6 +53,55 @@ test("buildWindowsHelloHelper writes target architecture helper into an arch-spe
   assert.deepEqual(calls[0][1].slice(-4), ["/link", "/MACHINE:ARM64", "runtimeobject.lib", "windowsapp.lib"]);
 });
 
+test("buildWindowsHelloHelper accepts an explicitly configured prebuilt helper", () => {
+  const copies = [];
+  const result = buildWindowsHelloHelper({
+    projectDir: "/repo",
+    platform: "win32",
+    arch: "x64",
+    env: { NETCATTY_WINDOWS_HELLO_HELPER: "/tmp/NetcattyWindowsHello.exe" },
+    mkdir: () => {},
+    copyFile: (...args) => copies.push(args),
+    run: () => {
+      throw new Error("should not run compiler");
+    },
+    readMachine: () => 0x8664,
+    logger: { log() {}, warn() {} },
+  });
+
+  const outputPath = path.join(
+    "/repo",
+    "electron",
+    "bridges",
+    "windowsHelloHelper",
+    "build",
+    "x64",
+    "NetcattyWindowsHello.exe",
+  );
+  assert.deepEqual(result, { skipped: false, outputPath });
+  assert.deepEqual(copies, [["/tmp/NetcattyWindowsHello.exe", outputPath]]);
+});
+
+test("buildWindowsHelloHelper rejects a prebuilt helper for the wrong architecture", () => {
+  const result = buildWindowsHelloHelper({
+    projectDir: "/repo",
+    platform: "win32",
+    arch: "arm64",
+    env: { NETCATTY_WINDOWS_HELLO_HELPER: "/tmp/NetcattyWindowsHello.exe" },
+    mkdir: () => {},
+    copyFile: () => {
+      throw new Error("should not copy wrong-arch helper");
+    },
+    run: () => {
+      throw new Error("should not run compiler");
+    },
+    readMachine: () => 0x8664,
+    logger: { warn() {} },
+  });
+
+  assert.deepEqual(result, { skipped: true, reason: "wrong-arch" });
+});
+
 test("buildWindowsHelloHelper initializes the Visual Studio developer environment when cl is not already on PATH", () => {
   const calls = [];
   const writes = [];

@@ -51,6 +51,17 @@ npm run pack:win-x64  # Windows x64  — macOS 上可执行
 npm run pack:linux    # Linux (AppImage + deb + rpm)
 ```
 
+从 macOS 交叉构建 v1.1.81+ 的 Windows 包时，上游新增的 Windows Hello helper 以及 patched node-pty ConPTY runtime 无法在本机通过 MSVC 编译。先从相同上游 tag 的官方 Windows x64 包提取这些文件，再显式指定：
+
+```bash
+NETCATTY_WINDOWS_HELLO_HELPER=/path/to/NetcattyWindowsHello.exe \
+NETCATTY_NODE_PTY_PREBUILD_DIR=/path/to/node-pty/build/Release \
+NETCATTY_WINDOWS_NATIVE_PREBUILD_DIR=/path/to/native-prebuilds \
+npm run pack:win-x64
+```
+
+`NETCATTY_WINDOWS_NATIVE_PREBUILD_DIR` 下应包含 `serialport/bindings.node`、`windows-process-tree/windows_process_tree.node` 和 `sqlite3/node_sqlite3.node`。构建脚本会逐一校验所有文件的 PE machine 与目标架构一致，并写入目标 Electron ABI 标记后才复制；未设置变量时仍沿用上游的 Windows 本机 MSVC 编译流程。
+
 **版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.81` 构建时，`package.json` 中版本号应为 `1.1.81-fork`，生成产物也沿用该版本号。
 
 **工作原理：** `electron-builder.config.cjs` 读取 `npm_config_arch` 环境变量动态决定构建的 arch：

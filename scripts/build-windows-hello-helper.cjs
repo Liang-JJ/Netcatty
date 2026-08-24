@@ -82,6 +82,7 @@ function buildWindowsHelloHelper({
   env = process.env,
   run = execFileSync,
   mkdir = fs.mkdirSync,
+  copyFile = fs.copyFileSync,
   writeFile = fs.writeFileSync,
   rm = fs.rmSync,
   tmpdir = require("node:os").tmpdir,
@@ -93,11 +94,32 @@ function buildWindowsHelloHelper({
   const targetArch = normalizeWindowsHelperArch(arch);
   if (!targetArch) return { skipped: true, reason: "unsupported-arch" };
 
-  const pathApi = platform === "win32" ? path.win32 : path;
+  const prebuiltPath = env.NETCATTY_WINDOWS_HELLO_HELPER;
+  const pathApi = prebuiltPath ? path : path.win32;
   const sourcePath = pathApi.join(projectDir, "electron", "bridges", "windowsHelloHelper", "NetcattyWindowsHello.cpp");
   const outputDir = pathApi.join(projectDir, "electron", "bridges", "windowsHelloHelper", "build", targetArch);
   const outputPath = pathApi.join(outputDir, "NetcattyWindowsHello.exe");
   mkdir(outputDir, { recursive: true });
+
+  const expectedMachine = getExpectedPeMachine(targetArch);
+  if (prebuiltPath) {
+    try {
+      if (readMachine(prebuiltPath) !== expectedMachine) {
+        logger.warn?.(`[windowsHelloHelper] Prebuilt helper does not match ${targetArch}`);
+        return { skipped: true, reason: "wrong-arch" };
+      }
+      copyFile(prebuiltPath, outputPath);
+      if (readMachine(outputPath) !== expectedMachine) {
+        logger.warn?.(`[windowsHelloHelper] Copied helper does not match ${targetArch}`);
+        return { skipped: true, reason: "wrong-arch" };
+      }
+      logger.log?.(`[windowsHelloHelper] Using prebuilt ${targetArch} helper: ${prebuiltPath}`);
+      return { skipped: false, outputPath };
+    } catch (err) {
+      logger.warn?.(`[windowsHelloHelper] Failed to use prebuilt helper: ${err?.message || err}`);
+      return { skipped: true, reason: "prebuilt-unavailable" };
+    }
+  }
 
   const compiler = findCompiler(env);
   const machine = targetArch === "arm64" ? "ARM64" : "X64";
@@ -150,7 +172,6 @@ function buildWindowsHelloHelper({
     return { skipped: true, reason: "compiler-unavailable" };
   }
 
-  const expectedMachine = getExpectedPeMachine(targetArch);
   const actualMachine = readMachine(outputPath);
   if (actualMachine !== expectedMachine) {
     logger.warn?.(`[windowsHelloHelper] Built helper machine ${actualMachine} does not match ${targetArch}`);

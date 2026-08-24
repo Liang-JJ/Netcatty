@@ -145,10 +145,14 @@ function archNameFromContext(context) {
 }
 
 function cursorPlatformPackageBases(platform) {
-  if (platform === "darwin") return ["sdk-darwin-arm64", "sdk-darwin-x64"];
-  if (platform === "linux") return ["sdk-linux-arm64", "sdk-linux-x64"];
-  if (platform === "win32") return ["sdk-win32-x64"];
-  return [];
+  if (!new Set(["darwin", "linux", "win32"]).has(platform)) return [];
+  return [
+    "sdk-darwin-arm64",
+    "sdk-darwin-x64",
+    "sdk-linux-arm64",
+    "sdk-linux-x64",
+    "sdk-win32-x64",
+  ];
 }
 
 function cursorPackagesToKeep(platform, archName) {

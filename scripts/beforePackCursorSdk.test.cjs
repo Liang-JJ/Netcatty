@@ -6,11 +6,15 @@ const path = require("node:path");
 
 const {
   CURSOR_PLATFORM_PACKAGES,
+  WINDOWS_NATIVE_PREBUILD_FILES,
   beforePackCursorSdk,
   ensureCursorSdkPlatformPackages,
+  prepareWindowsNativePrebuilds,
 } = require("./beforePackCursorSdk.cjs");
 const {
   copyPatchedNodePtyToPackagedApp,
+  NODE_PTY_RUNTIME_FILES,
+  preparePrebuiltNodePty,
   rebuildPatchedNodePty,
 } = require("./nodePtyConptyPatch.cjs");
 
@@ -74,6 +78,8 @@ test("beforePackCursorSdk builds Windows Hello helper only for Windows packages"
     electronPlatformName: "win32",
     arch: 3,
     ensureCursorSdkPlatformPackages: () => [],
+    prepareWindowsNativePrebuilds: () => false,
+    preparePrebuiltNodePty: () => false,
     buildWindowsHelloHelper: (projectDir) => calls.push(projectDir),
   });
 
@@ -83,6 +89,8 @@ test("beforePackCursorSdk builds Windows Hello helper only for Windows packages"
     appDir: process.cwd(),
     electronPlatformName: "darwin",
     ensureCursorSdkPlatformPackages: () => [],
+    prepareWindowsNativePrebuilds: () => false,
+    preparePrebuiltNodePty: () => false,
     buildWindowsHelloHelper: (projectDir) => calls.push(projectDir),
   });
 
@@ -98,6 +106,8 @@ test("beforePackCursorSdk falls back to npm_config_arch for Windows Hello helper
       appDir: process.cwd(),
       electronPlatformName: "win32",
       ensureCursorSdkPlatformPackages: () => [],
+      prepareWindowsNativePrebuilds: () => false,
+      preparePrebuiltNodePty: () => false,
       buildWindowsHelloHelper: (projectDir) => calls.push(projectDir),
     });
   } finally {
@@ -117,6 +127,8 @@ test("beforePackCursorSdk fails Windows packaging when Windows Hello helper buil
       appDir: process.cwd(),
       electronPlatformName: "win32",
       ensureCursorSdkPlatformPackages: () => [],
+      prepareWindowsNativePrebuilds: () => false,
+      preparePrebuiltNodePty: () => false,
       buildWindowsHelloHelper: () => ({ skipped: true, reason: "compiler-unavailable" }),
     }),
     /Windows Hello helper was not built: compiler-unavailable/,
@@ -153,6 +165,117 @@ test("Windows packaging rebuilds patched node-pty from source for the target arc
     path.join("/workspace/netcatty", "node_modules", "node-pty", "scripts", "post-install.js"),
   );
   assert.equal(calls[1][2].env.npm_config_arch, "arm64");
+});
+
+test("Windows cross-packaging prepares active native modules for the Electron ABI", () => {
+  const copied = [];
+  const writes = [];
+  const prepared = prepareWindowsNativePrebuilds({
+    projectDir: "/workspace/netcatty",
+    platform: "win32",
+    arch: "x64",
+    electronVersion: "42.3.3",
+    env: { NETCATTY_WINDOWS_NATIVE_PREBUILD_DIR: "/prebuilt/native" },
+    exists: () => true,
+    readMachine: () => 0x8664,
+    copy: (...args) => copied.push(args),
+    mkdir: () => {},
+    writeFile: (...args) => writes.push(args),
+    logger: { log() {} },
+  });
+
+  assert.equal(prepared, true);
+  assert.equal(copied.length, WINDOWS_NATIVE_PREBUILD_FILES.length);
+  assert.deepEqual(copied[0], [
+    path.join("/prebuilt/native", "serialport", "bindings.node"),
+    path.join(
+      "/workspace/netcatty",
+      "node_modules",
+      "@serialport",
+      "bindings-cpp",
+      "build",
+      "Release",
+      "bindings.node",
+    ),
+  ]);
+  assert.equal(writes.length, WINDOWS_NATIVE_PREBUILD_FILES.length);
+  assert.ok(writes.every(([, value, encoding]) => value === "x64--146" && encoding === "utf8"));
+});
+
+test("Windows cross-packaging prepares the complete node-pty runtime and Electron ABI marker", () => {
+  const copied = [];
+  const writes = [];
+  const prepared = preparePrebuiltNodePty({
+    projectDir: "/workspace/netcatty",
+    platform: "win32",
+    arch: 1,
+    electronVersion: "42.3.3",
+    env: { NETCATTY_NODE_PTY_PREBUILD_DIR: "/prebuilt/node-pty" },
+    exists: () => true,
+    readMachine: () => 0x8664,
+    copy: (...args) => copied.push(args),
+    mkdir: () => {},
+    writeFile: (...args) => writes.push(args),
+    logger: { log() {} },
+  });
+
+  assert.equal(prepared, true);
+  assert.equal(copied.length, NODE_PTY_RUNTIME_FILES.length);
+  assert.deepEqual(copied[0], [
+    path.join("/prebuilt/node-pty", "pty.node"),
+    path.join("/workspace/netcatty", "node_modules", "node-pty", "build", "Release", "pty.node"),
+  ]);
+  assert.deepEqual(writes, [[
+    path.join("/workspace/netcatty", "node_modules", "node-pty", "build", "Release", ".forge-meta"),
+    "x64--146",
+    "utf8",
+  ]]);
+});
+
+test("Windows cross-packaging accepts an explicitly configured patched node-pty runtime", () => {
+  const copied = [];
+  const made = [];
+  const rebuilt = rebuildPatchedNodePty({
+    projectDir: "/workspace/netcatty",
+    platform: "win32",
+    arch: 1,
+    env: { NETCATTY_NODE_PTY_PREBUILD_DIR: "/prebuilt/node-pty" },
+    run: () => {
+      throw new Error("should not rebuild from source");
+    },
+    exists: () => true,
+    readMachine: () => 0x8664,
+    copy: (...args) => copied.push(args),
+    mkdir: (...args) => made.push(args),
+    logger: { log() {} },
+  });
+
+  assert.equal(rebuilt, true);
+  assert.equal(copied.length, 3);
+  assert.equal(made.length, 3);
+  assert.deepEqual(copied[0], [
+    path.join("/prebuilt/node-pty", "conpty.node"),
+    path.join("/workspace/netcatty", "node_modules", "node-pty", "build", "Release", "conpty.node"),
+  ]);
+});
+
+test("Windows cross-packaging rejects prebuilt node-pty files for the wrong architecture", () => {
+  assert.throws(() => rebuildPatchedNodePty({
+    projectDir: "/workspace/netcatty",
+    platform: "win32",
+    arch: 3,
+    env: { NETCATTY_NODE_PTY_PREBUILD_DIR: "/prebuilt/node-pty" },
+    run: () => {
+      throw new Error("should not rebuild from source");
+    },
+    exists: () => true,
+    readMachine: () => 0x8664,
+    copy: () => {
+      throw new Error("should not copy wrong-arch artifacts");
+    },
+    mkdir: () => {},
+    logger: { log() {} },
+  }), /does not match Windows arm64/);
 });
 
 test("Windows packaging fails when rebuilt node-pty runtime files are incomplete", () => {
