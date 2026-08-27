@@ -338,69 +338,6 @@ export interface DiscoveredAgent {
   authSource?: string | null;
 }
 
-export type AIHttpProxyMode = 'off' | 'system' | 'custom';
-
-export interface AIHttpProxyCustomConfig {
-  scheme: 'http' | 'https';
-  host: string;
-  port: number;
-  username?: string;
-  password?: string; // enc:v1: encrypted via credentialBridge
-}
-
-export interface AIHttpProxyConfig {
-  mode: AIHttpProxyMode;
-  custom?: AIHttpProxyCustomConfig;
-}
-
-export const DEFAULT_AI_HTTP_PROXY_CONFIG: AIHttpProxyConfig = {
-  mode: 'off',
-};
-
-export function sanitizeAIHttpProxyConfig(value: unknown): AIHttpProxyConfig {
-  if (!value || typeof value !== 'object') return DEFAULT_AI_HTTP_PROXY_CONFIG;
-
-  const raw = value as {
-    mode?: unknown;
-    custom?: {
-      scheme?: unknown;
-      host?: unknown;
-      port?: unknown;
-      username?: unknown;
-      password?: unknown;
-    } | null;
-  };
-
-  if (raw.mode === 'system') {
-    return { mode: 'system' };
-  }
-
-  if (raw.mode === 'custom') {
-    const custom = raw.custom ?? {};
-    const parsedPort = Number(custom.port);
-    const port = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535
-      ? parsedPort
-      : 8080;
-
-    return {
-      mode: 'custom',
-      custom: {
-        scheme: custom.scheme === 'https' ? 'https' : 'http',
-        host: typeof custom.host === 'string' ? custom.host : '',
-        port,
-        username: typeof custom.username === 'string' && custom.username.length > 0
-          ? custom.username
-          : undefined,
-        password: typeof custom.password === 'string' && custom.password.length > 0
-          ? custom.password
-          : undefined,
-      },
-    };
-  }
-
-  return DEFAULT_AI_HTTP_PROXY_CONFIG;
-}
-
 // Web Search types
 export type WebSearchProviderId = 'tavily' | 'exa' | 'bocha' | 'zhipu' | 'searxng';
 

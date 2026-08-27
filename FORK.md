@@ -36,7 +36,7 @@ npm run pack:win-x64
 ### Keyword Highlight（关键词高亮）
 - **类**: `KeywordHighlighter` 在 `components/terminal/keywordHighlight.ts`，直接重着色 xterm.js buffer cell 的前景色，不修改数据流。
 - **规则定义**: `DEFAULT_KEYWORD_HIGHLIGHT_RULES` 在 `domain/models/terminal.ts`，含 6 个内置规则。用户可在 Settings > Terminal > Keyword Highlighting 全局配置，也可按 host 覆盖。
-- **性能**: 基于上游 v1.1.81 的 buffer cell 前景色重着色引擎，普通写入仅处理受影响的逻辑行，大批量输出通过写入压力检测和 quiet catch-up 合并扫描；`scripts/xterm-keyword-highlight-{performance,throughput}.live.test.cjs` 覆盖真实 Electron/WebGL 写入与吞吐压力。
+- **性能**: 基于上游 v1.1.82 的 buffer cell 前景色重着色引擎，普通写入仅处理受影响的逻辑行，大批量输出通过写入压力检测和 quiet catch-up 合并扫描；`scripts/xterm-keyword-highlight-{performance,throughput}.live.test.cjs` 覆盖真实 Electron/WebGL 写入与吞吐压力。
 - **alternate buffer 行为**: **不要**在 alternate buffer 中禁用高亮。`less`/`more` 使用 alternate buffer 但不管理高亮，fork 使用 220ms quiet refresh 在输出稳定后扫描当前视口，避免 vim/htop 连续重绘时逐写入执行正则匹配。
 
 ### 跨平台构建
@@ -62,7 +62,7 @@ npm run pack:win-x64
 
 `NETCATTY_WINDOWS_NATIVE_PREBUILD_DIR` 下应包含 `serialport/bindings.node`、`windows-process-tree/windows_process_tree.node` 和 `sqlite3/node_sqlite3.node`。构建脚本会逐一校验所有文件的 PE machine 与目标架构一致，并写入目标 Electron ABI 标记后才复制；未设置变量时仍沿用上游的 Windows 本机 MSVC 编译流程。
 
-**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.81` 构建时，`package.json` 中版本号应为 `1.1.81-fork`，生成产物也沿用该版本号。
+**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.82` 构建时，`package.json` 中版本号应为 `1.1.82-fork`，生成产物也沿用该版本号。
 
 **工作原理：** `electron-builder.config.cjs` 读取 `npm_config_arch` 环境变量动态决定构建的 arch：
 
@@ -94,7 +94,7 @@ npm run pack:win-x64
 
 > 每次 rebase 后运行 `git log --oneline v<upstream-tag>..HEAD` 查看需保留的提交。
 
-### 当前 rebase 基准: v1.1.81
+### 当前 rebase 基准: v1.1.82
 
 ### 1. 一键登录 + 全键盘操作
 
@@ -120,7 +120,7 @@ npm run pack:win-x64
 
 **涉及文件**: `components/terminal/keywordHighlight.ts`, `components/terminal/keywordHighlight.test.ts`
 
-- 在上游 v1.1.81 的 cell 重着色引擎上允许 `recolorVisible` / `recolorRange` 处理 alternate buffer
+- 在上游 v1.1.82 的 cell 重着色引擎上允许 `recolorVisible` / `recolorRange` 处理 alternate buffer
 - alternate buffer 写入采用独立的 220ms quiet refresh，保留 less/more 高亮能力，同时避免翻页/全屏重绘持续抢占
 - normal buffer 的 tail -f / 持续日志继续使用上游的 output-pressure bypass、逻辑行局部重着色和 quiet catch-up，不恢复旧 decoration/全屏扫描实现
 - 序列化、clear/reset 和规则变更需要恢复 normal/alternate 两套 buffer 的原始前景色，避免高亮颜色泄漏
@@ -138,13 +138,9 @@ npm run pack:win-x64
 - `npm run pack:win-x64` 只构建 x64
 - **rebase 注意**: `electron-builder.config.cjs` 上游可能新增排除规则，合并时保留我们的 arch 变量
 
-### 5. AI 功能代理与 Codex 实时模型列表
+### 5. Codex 实时模型列表
 
-**涉及文件**: `application/state/useAIState.ts`, `application/state/useAISettingsState.ts`, `components/settings/tabs/ai/HttpProxySettings.tsx`, `electron/bridges/aiBridge/proxyRuntime.cjs`, `electron/bridges/aiBridge.cjs`, `electron/preload/api.cjs`, `types/global/netcatty-bridge-ai.d.ts`, `infrastructure/ai/types.ts`
-
-- AI 代理新增 `off / system / custom` 三种模式，设置页由 `HttpProxySettings.tsx` 负责编辑，状态通过 `useAISettingsState.ts` 和 `useAIState.ts` 统一持久化到 `STORAGE_KEY_AI_HTTP_PROXY`。
-- 主进程的 `proxyRuntime.cjs` 维护独立的 AI 会话分区，按配置切换直连、系统代理或自定义代理；自定义代理会通过 Electron `login` 事件仅对 AI 请求注入凭据，并保留 `localhost/127.0.0.1/::1` 直连白名单。
-- `electron/preload/api.cjs` 和 `types/global/netcatty-bridge-ai.d.ts` 增加了 AI 代理同步 IPC，保证前端改动能实时传到主进程。
+> AI HTTP 代理（off/system/custom 三态、`proxyRuntime.cjs` 独立会话分区）已在上游 v1.1.82 吸收（`httpNetworkProxyAgent.cjs` app 级代理 + `streamRequest` idle/total 超时管理），fork 实现于 rebase 到 v1.1.82 时移除。
 
 **涉及文件**: `electron/bridges/aiBridge/sdk/codexDriver.cjs`, `electron/bridges/aiBridge/sdk/index.cjs`, `electron/bridges/aiBridge/sdk/sdkStreamHandlers.cjs`, `electron/bridges/aiBridge/sdk/codexDriver.test.cjs`, `electron/bridges/aiBridge/sdk/index.test.cjs`, `infrastructure/ai/types.ts`
 
@@ -161,7 +157,7 @@ npm run pack:win-x64
 
 ### Rebase 操作备忘
 
-当前基准: **v1.1.81**
+当前基准: **v1.1.82**
 
 ```bash
 git fetch origin --tags

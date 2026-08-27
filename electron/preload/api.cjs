@@ -1702,9 +1702,6 @@ function createPreloadApi(ctx) {
   aiSyncWebSearch: async (apiHost, apiKey) => {
     return ipcRenderer.invoke("netcatty:ai:sync-web-search", { apiHost, apiKey });
   },
-  aiSyncHttpProxy: async (config) => {
-    return ipcRenderer.invoke("netcatty:ai:sync-http-proxy", { config });
-  },
   aiChatStream: async (requestId, url, headers, body, providerId, idleTimeoutMs) => {
     return ipcRenderer.invoke("netcatty:ai:chat:stream", {
       requestId,

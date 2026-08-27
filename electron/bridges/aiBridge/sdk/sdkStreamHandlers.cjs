@@ -539,10 +539,9 @@ function registerSdkStreamHandlers(ctx) {
         sdkRequestSessions.set(requestId, chatSessionId);
         mcpServerBridge.setChatSessionCancelled?.(chatSessionId, false);
 
-        const emitter = createStreamEmitter({ safeSend, sender: event.sender, requestId });
-        try {
+          const emitter = createStreamEmitter({ safeSend, sender: event.sender, requestId });
+          try {
           const shellEnv = await getShellEnv();
-          const proxyEnv = await aiProxyRuntime.getAgentProxyEnv();
           const effectiveMode = normalizeToolIntegrationMode(toolIntegrationMode);
           setToolIntegrationMode(effectiveMode);
 
@@ -574,7 +573,6 @@ function registerSdkStreamHandlers(ctx) {
             requestedAgentEnv: normalizedAgentEnv,
             withCliDiscoveryEnv,
             normalizeClaudeCodeExecutableEnv: normalizeClaudeCodeExecutableEnvForSdk,
-            proxyEnv,
           });
           if (cursorAuthMode === "cli-login") {
             delete env.CURSOR_API_KEY;
@@ -853,13 +851,11 @@ function registerSdkStreamHandlers(ctx) {
         if (cursorAuthMode === "cli-login") {
           delete normalizedAgentEnv.CURSOR_API_KEY;
         }
-        const proxyEnv = await aiProxyRuntime.getAgentProxyEnv();
         const env = buildSdkAgentEnv({
           shellEnv,
           requestedAgentEnv: normalizedAgentEnv,
           withCliDiscoveryEnv,
           normalizeClaudeCodeExecutableEnv: normalizeClaudeCodeExecutableEnvForSdk,
-          proxyEnv,
         });
         if (cursorAuthMode === "cli-login") {
           delete env.CURSOR_API_KEY;

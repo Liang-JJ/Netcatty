@@ -2,7 +2,6 @@
  * Shared types for AI settings sub-components
  */
 import type {
-  AIHttpProxyConfig,
   AIProviderId,
   ExternalAgentConfig,
   ProviderAdvancedParams,
@@ -145,7 +144,6 @@ export interface FetchBridge {
 export interface NetcattyAiBridge {
   aiDiscoverAgents?: (options?: { refreshShellEnv?: boolean; apiKeyPresent?: boolean }) => Promise<Array<AgentPathInfo & { command: string }>>;
   aiPrewarmShellEnv?: () => Promise<{ ok: boolean; error?: string }>;
-  aiSyncHttpProxy?: (config: AIHttpProxyConfig) => Promise<{ ok: boolean; error?: string }>;
   aiCodexGetIntegration?: (options?: { refreshShellEnv?: boolean; validateChatGptAuth?: boolean; codexPath?: string }) => Promise<CodexIntegrationStatus>;
   aiCodexStartLogin?: (options?: { codexPath?: string }) => Promise<{ ok: boolean; session?: CodexLoginSession; error?: string }>;
   aiCodexGetLoginSession?: (sessionId: string) => Promise<{ ok: boolean; session?: CodexLoginSession; error?: string }>;

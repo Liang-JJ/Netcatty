@@ -228,8 +228,6 @@ const SettingsAITabContainer: React.FC = () => {
                 setMaxIterations={aiState.setMaxIterations}
                 webSearchConfig={aiState.webSearchConfig}
                 setWebSearchConfig={aiState.setWebSearchConfig}
-                aiHttpProxyConfig={aiState.aiHttpProxyConfig}
-                setAIHttpProxyConfig={aiState.setAIHttpProxyConfig}
                 quickMessages={aiState.quickMessages}
                 setQuickMessages={aiState.setQuickMessages}
                 showTerminalSelectionAIAction={aiState.showTerminalSelectionAIAction}
