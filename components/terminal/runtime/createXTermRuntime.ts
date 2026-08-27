@@ -118,6 +118,11 @@ import {
 import { formatSerialLocalEcho } from "./serialLocalEcho";
 import { mapTerminalBackspaceInput } from "./terminalBackspaceInput";
 import { sanitizeTerminalInput } from "./terminalInputSanitize";
+import {
+  getTextInputWireChunks,
+  shouldSplitImeTextInputForWire,
+  shouldSplitRawPasteInputForWire,
+} from "./terminalPerCharacterInput";
 import { formatTelnetLocalEcho } from "./telnetLocalEcho";
 import {
   isTerminalFontSizeAction,
@@ -1060,6 +1065,13 @@ export const createXTermRuntime = (ctx: CreateXTermRuntimeContext): XTermRuntime
       source?: "terminal" | "shift-enter" | "kitty";
       /** Skip string broadcast when peers will re-resolve from a key chord. */
       skipBroadcast?: boolean;
+      /**
+       * Send plain text as one write per character. Strict bastion prompts
+       * (QAX) treat one channel write as a keystroke and drop multi-character
+       * chunks, so IME commits and short raw pastes must go out per
+       * character (#3077). Bookkeeping still sees the whole payload once.
+       */
+      perCharacterWrites?: boolean;
     },
   ) => {
     // Strip zero-width / invisible formatting characters that CJK IMEs
@@ -1183,7 +1195,9 @@ export const createXTermRuntime = (ctx: CreateXTermRuntimeContext): XTermRuntime
         // When backspaceBehavior is configured, remap the Backspace key output
         const outData = mapTerminalBackspaceInput(dataToWrite, ctx.host.backspaceBehavior);
         ctx.onOutputTriggerUserInputRef?.current?.(outData);
-        ctx.terminalBackend.writeToSession(id, outData, { sensitive });
+        for (const chunk of getTextInputWireChunks(outData, options?.perCharacterWrites === true)) {
+          ctx.terminalBackend.writeToSession(id, chunk, { sensitive });
+        }
 
         // Local echo for serial connections only when explicitly enabled
         if (inputSource !== "kitty" && ctx.host.protocol === "serial" && ctx.serialLocalEcho) {
@@ -1347,7 +1361,7 @@ export const createXTermRuntime = (ctx: CreateXTermRuntimeContext): XTermRuntime
       if (ctx.isBroadcastEnabledRef.current && ctx.onBroadcastInputRef.current) {
         suppressNextTerminalDataBroadcast = true;
       }
-      handleTerminalInputData(text);
+      handleTerminalInputData(text, { perCharacterWrites: shouldSplitImeTextInputForWire(text) });
       if (deferredKittyEvent) {
         const pressEvent: KittyKeyboardEvent = {
           ...deferredKittyEvent,
@@ -1400,7 +1414,9 @@ export const createXTermRuntime = (ctx: CreateXTermRuntimeContext): XTermRuntime
       if (ctx.isBroadcastEnabledRef.current && ctx.onBroadcastInputRef.current) {
         suppressNextTerminalDataBroadcast = true;
       }
-      handleTerminalInputData(sanitizedText);
+      handleTerminalInputData(sanitizedText, {
+        perCharacterWrites: shouldSplitImeTextInputForWire(sanitizedText),
+      });
     }
     broadcastKittyInput({ kind: "text", text: sanitizedText });
   };
@@ -2228,7 +2244,10 @@ export const createXTermRuntime = (ctx: CreateXTermRuntimeContext): XTermRuntime
         if (ctx.isBroadcastEnabledRef.current && ctx.onBroadcastInputRef.current) {
           suppressNextTerminalDataBroadcast = true;
         }
-        handleTerminalInputData(sanitizedData);
+        // Committed composition text, not a negotiated Kitty sequence.
+        handleTerminalInputData(sanitizedData, {
+          perCharacterWrites: shouldSplitImeTextInputForWire(sanitizedData),
+        });
       }
       broadcastKittyInput({ kind: "text", text: sanitizedData });
       return;
@@ -2246,7 +2265,14 @@ export const createXTermRuntime = (ctx: CreateXTermRuntimeContext): XTermRuntime
       });
       broadcastLegacyDataPending = null;
     }
-    handleTerminalInputData(data);
+    // Raw multi-character onData is an unbracketed paste (or a committed
+    // composition): short plain text must reach strict bastions per character.
+    // Decide on the sanitized payload so removed zero-width characters cannot
+    // keep a qualifying paste above the split cap (#3138).
+    const sanitizedRawData = sanitizeTerminalInput(data);
+    handleTerminalInputData(sanitizedRawData, {
+      perCharacterWrites: shouldSplitRawPasteInputForWire(sanitizedRawData),
+    });
   });
 
   const handleKittyKeyboardBroadcast = createKittyKeyboardBroadcastHandler({
