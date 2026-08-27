@@ -110,6 +110,8 @@ import {
   shouldBlockKeyPressForImeTextInput,
   shouldCommitDeferredImeTextInput,
   shouldDeferKeyDownForImeTextInput,
+  shouldFlushDeferredImeTextInputOnKeyUp,
+  shouldFlushStaleDeferredImeTextInput,
 } from "./terminalImeTextInput";
 import { formatSerialLocalEcho } from "./serialLocalEcho";
 import { mapTerminalBackspaceInput } from "./terminalBackspaceInput";
@@ -1461,23 +1463,41 @@ export const createXTermRuntime = (ctx: CreateXTermRuntimeContext): XTermRuntime
 
     if (e.type === "keyup") {
       // insertText for this keystroke has already run when present; flush the
-      // deferred ASCII key only when the IME did not remap it.
-      if (imeTextInputDeferredKey !== null && e.key === imeTextInputDeferredKey) {
+      // deferred ASCII key when the IME did not remap it. Any real key release
+      // ends the deferral: Windows IMEs report Process/229 as the release of a
+      // key they consumed (or drop the keyup), and an exact key match left the
+      // deferral armed so every later keypress was swallowed (#3103).
+      let releaseEvent: KeyboardEvent = e;
+      if (
+        imeTextInputDeferredKey !== null &&
+        shouldFlushDeferredImeTextInputOnKeyUp(imeTextInputDeferredKey, e)
+      ) {
+        const deferredKittyEvent = imeTextInputDeferredKittyEvent;
+        const mangledRelease =
+          e.key !== imeTextInputDeferredKey && deferredKittyEvent !== null;
         flushImeTextInputDeferral();
+        if (mangledRelease && deferredKittyEvent) {
+          // Pair the release from the deferred physical key; the mangled
+          // release event must not be encoded as a kitty key event.
+          releaseEvent = {
+            ...deferredKittyEvent,
+            type: "keyup",
+          } as unknown as KeyboardEvent;
+        }
       }
-      const identity = kittyKeyIdentity(e);
+      const identity = kittyKeyIdentity(releaseEvent);
       if (broadcastLegacyDataPending === identity) clearBroadcastLegacyDataPending();
       const forwardedPress = broadcastForwardedKeys.get(identity);
       if (forwardedPress) {
         broadcastForwardedKeys.delete(identity);
         broadcastKittyInput(
-          { kind: "key", event: toKittyKeyboardEvent(e) },
+          { kind: "key", event: toKittyKeyboardEvent(releaseEvent) },
           true,
           forwardedPress.targetSessionIds,
         );
       }
       if (!kittyForwardedKeys.delete(identity)) return true;
-      const kittyEvent = toKittyKeyboardEvent(e);
+      const kittyEvent = toKittyKeyboardEvent(releaseEvent);
       const sequence = kittyKeyboardProtocolEnabled
         ? encodeKittyKeyEvent(kittyKeyboardMode, kittyEvent)
         : null;
@@ -1491,8 +1511,15 @@ export const createXTermRuntime = (ctx: CreateXTermRuntimeContext): XTermRuntime
     }
 
     // Block keypress so xterm cannot re-emit the half-width ASCII char after we
-    // deferred the matching keydown for IME insertText (#2833).
-    if (shouldBlockKeyPressForImeTextInput(imeTextInputDeferredKey, e)) {
+    // deferred the matching keydown for IME insertText (#2833). Scoped to the
+    // deferred key so a stale deferral cannot swallow unrelated keystrokes.
+    if (
+      shouldBlockKeyPressForImeTextInput(
+        imeTextInputDeferredKey,
+        e,
+        imeTextInputDeferredKittyEvent?.keyCode ?? null,
+      )
+    ) {
       return false;
     }
 
@@ -1501,6 +1528,17 @@ export const createXTermRuntime = (ctx: CreateXTermRuntimeContext): XTermRuntime
     }
 
     if (handlingKittyBroadcast) return true;
+
+    // A deferred punctuation keystroke that outlived its own release means the
+    // IME swallowed the keyup (Windows reports Process/229). Flush it before
+    // the next keystroke so the pending ASCII key still reaches the PTY
+    // instead of wedging the deferral (#3103).
+    if (
+      imeTextInputDeferredKey !== null &&
+      shouldFlushStaleDeferredImeTextInput(imeTextInputDeferredKey, e)
+    ) {
+      flushImeTextInputDeferral();
+    }
 
     if (e.keyCode === 229) {
       markKittyCompositionPending(true);
