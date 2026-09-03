@@ -62,7 +62,7 @@ npm run pack:win-x64
 
 `NETCATTY_WINDOWS_NATIVE_PREBUILD_DIR` 下应包含 `serialport/bindings.node`、`windows-process-tree/windows_process_tree.node` 和 `sqlite3/node_sqlite3.node`。构建脚本会逐一校验所有文件的 PE machine 与目标架构一致，并写入目标 Electron ABI 标记后才复制；未设置变量时仍沿用上游的 Windows 本机 MSVC 编译流程。
 
-**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.82` 构建时，`package.json` 中版本号应为 `1.1.82-fork`，生成产物也沿用该版本号。
+**版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.82` 构建时，`package.json` 中版本号应为 `1.1.82-fork`，生成产物也沿用该版本号。同一 rebase 基准上的第二次及后续构建（含 fork 私有修复）追加 `-vN` 后缀，如 `1.1.82-fork-v2`，tag 同名（`v1.1.82-fork-v2`）。
 
 **工作原理：** `electron-builder.config.cjs` 读取 `npm_config_arch` 环境变量动态决定构建的 arch：
 
