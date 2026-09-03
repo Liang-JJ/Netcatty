@@ -64,6 +64,8 @@ npm run pack:win-x64
 
 **版本号约定：** 私有 fork 默认构建版本号使用 `<原tag>-fork` 格式，例如基于上游 `v1.1.82` 构建时，`package.json` 中版本号应为 `1.1.82-fork`，生成产物也沿用该版本号。同一 rebase 基准上的第二次及后续构建（含 fork 私有修复）追加 `-vN` 后缀，如 `1.1.82-fork-v2`，tag 同名（`v1.1.82-fork-v2`）。
 
+> ⚠️ **绝对不要给 `package.json` 添加 `productName` 字段**（v1.1.82-fork-v3 事故）。Electron 的 `app.name` 优先取 `productName`，一旦添加，安装版会改用全新的 userData 目录（Windows `%APPDATA%\<productName>`），用户所有主机/密钥/设置看起来"全部丢失"。fork 必须与上游一致：只用 `"name": "netcatty"`，让配置目录保持 `%APPDATA%\netcatty` / `~/Library/Application Support/netcatty`。应用显示名/产物名由 `electron-builder.config.cjs` 的 `productName: 'Netcatty'` 控制，与运行时数据目录无关。
+
 **工作原理：** `electron-builder.config.cjs` 读取 `npm_config_arch` 环境变量动态决定构建的 arch：
 
 - 未设置 `npm_config_arch`：构建所有平台默认 arch（mac: `['arm64', 'x64']`, win: `['x64', 'arm64']`），这在 **macOS 上构建 Windows 目标会失败**，因为 arm64 native 模块无法交叉编译
