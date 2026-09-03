@@ -1,6 +1,7 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
 
 import { MAX_TERMINAL_WRITE_QUEUE_DRAIN_BYTES } from "./terminalFlowConstants";
+import { logTerminalEchoLoss } from "./terminalEchoLossDiagnostics";
 
 export const MAX_WRITE_QUEUE_ITEMS = 32;
 export const MAX_WRITE_QUEUE_BYTES = 512 * 1024;
@@ -465,6 +466,7 @@ export const abortTerminalWriteQueue = (
   terminalWriteQueues.delete(term);
 
   if (droppedBytes > 0) {
+    logTerminalEchoLoss("write-queue-abort", { bytes: droppedBytes });
     (onDropped ?? queue.onDropped)?.(droppedBytes);
   }
 };

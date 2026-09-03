@@ -109,6 +109,15 @@ npm run pack:win-x64
 
 ### 当前 rebase 基准: v1.1.82
 
+### 0. 终端回显丢弃诊断（echo-loss diagnostics）
+
+**涉及文件**: `components/terminal/runtime/terminalEchoLossDiagnostics.ts`（+ `.test.ts`）、`terminalOutputPipeline.ts`、`terminalSessionAttachment.ts`、`terminalWriteQueue.ts`、`terminalWriteCoalescer.ts`、`terminalUserPaste.ts`、`electron/preload/terminalDataBacklog.cjs`、`electron/terminalWorker/runtime.cjs`
+
+- 定位「打字字符已送达远端但终端不显示」类问题的可选日志：覆盖显示管线全部主动丢弃点（interrupt display gate 各分支、写队列/合并器 abort、backlog 64KB 裁剪、preload session 丢弃、worker generation 丢弃、paste 残留 ESC[K 注入）。
+- 开关：`localStorage.setItem("netcatty.debug.echoLoss", "1")` 后重载窗口；终端 worker（utility process）用环境变量 `NETCATTY_ECHO_LOSS=1`。日志前缀 `[echo-loss]`，含 reason/session/字节数/被丢文本摘要。
+- 默认关闭零开销；复现时日志有输出→管线丢弃点，静默→渲染层（如 WebGL 字形空白）。
+- **rebase 注意**: 纯增量埋点（每处 1-3 行 + import），冲突时以上游实现为准、重新补埋点即可。
+
 ### 1. 一键登录 + 全键盘操作
 
 **涉及文件**: `components/QuickConnectWizard.tsx`, `components/ui/combobox.tsx`, `components/VaultView.tsx`, `components/vault/VaultViewLayout.tsx`, `domain/host.ts`, `domain/host.test.ts`, `application/i18n/locales/{en,zh-CN}/vault.ts`

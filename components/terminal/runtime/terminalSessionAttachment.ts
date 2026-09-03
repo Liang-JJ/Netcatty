@@ -33,6 +33,10 @@ import {
   type TerminalOutputPerfTrace,
 } from "./terminalPerformanceDiagnostics";
 import {
+  formatEchoLossPreview,
+  logTerminalEchoLoss,
+} from "./terminalEchoLossDiagnostics";
+import {
   noteTerminalOutputPressureData,
   resetTerminalOutputPressure,
   setTerminalOutputPressureVisibility,
@@ -414,9 +418,16 @@ export const resetTerminalLineTimestampState = resetTerminalLineTimestamps;
 export const acknowledgeDroppedTerminalDisplayBytes = (
   ctx: TerminalSessionStartersContext,
   bytes: number,
+  options: { reason?: string; preview?: string } = {},
 ): void => {
   if (bytes <= 0) return;
   const sessionId = ctx.sessionRef.current;
+  logTerminalEchoLoss("ack-dropped-display-bytes", {
+    sessionId,
+    reason: options.reason,
+    bytes,
+    preview: options.preview,
+  });
   ackTerminalSessionFlow(ctx.terminalBackend, sessionId, bytes);
   if (sessionId) {
     flushTerminalSessionFlowAck(sessionId);
@@ -931,7 +942,10 @@ export const attachSessionToTerminal = (
         if (typeof meta?.pluginPipelineSensitiveInput === "boolean") {
           ctx.onTerminalOutput?.("", meta);
         }
-        acknowledgeDroppedTerminalDisplayBytes(ctx, pluginPipelineIngressBytes);
+        acknowledgeDroppedTerminalDisplayBytes(ctx, pluginPipelineIngressBytes, {
+          reason: "plugin-pipeline-empty",
+          preview: formatEchoLossPreview(chunk),
+        });
         return;
       }
       acknowledgeDroppedTerminalDisplayBytes(
@@ -941,6 +955,10 @@ export const attachSessionToTerminal = (
           : pluginPipelineIngressBytes != null
             ? 0
             : filtered.droppedBytes,
+        {
+          reason: filtered.reason,
+          preview: !filtered.accepted ? formatEchoLossPreview(chunk) : undefined,
+        },
       );
       if (!filtered.accepted) return;
 

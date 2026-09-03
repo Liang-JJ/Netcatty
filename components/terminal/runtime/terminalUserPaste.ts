@@ -1,5 +1,7 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
 
+import { logTerminalEchoLoss } from "./terminalEchoLossDiagnostics";
+
 type PasteTarget = Pick<XTerm, "paste" | "scrollToBottom"> &
   Partial<Pick<XTerm, "cols" | "rows" | "write">> & {
     modes?: { bracketedPasteMode?: boolean };
@@ -481,6 +483,10 @@ export function clearPasteResidualAfterTerminalWrite(term: object): string | nul
   // bracketed paste redraws; clear them locally without sending bytes upstream.
   state.clearPending -= 1;
   const cleanupData = "\x1b[K";
+  logTerminalEchoLoss("paste-residual-erase", {
+    bytes: cleanupData.length,
+    preview: cleanupData,
+  });
   (term as Pick<XTerm, "write">).write(cleanupData);
   return cleanupData;
 }

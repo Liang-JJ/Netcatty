@@ -227,7 +227,17 @@ function createSender(
       ? explicitGeneration
       : getOwnedSessionGeneration(sessionId);
     const originRequestId = getOriginRequestId(sessionId);
-    if ((sessionOutputGenerations.get(sessionId) ?? 0) !== outputGeneration) return;
+    if ((sessionOutputGenerations.get(sessionId) ?? 0) !== outputGeneration) {
+      // Fork echo-loss diagnostics (utility process: no DOM, env-gated).
+      if (process.env.NETCATTY_ECHO_LOSS === "1") {
+        console.info(
+          `[echo-loss] worker-generation-drop: session=${sessionId}`
+          + ` gen=${sessionOutputGenerations.get(sessionId) ?? 0}!=${outputGeneration}`
+          + ` ${String(payload?.data ?? "").length}B`,
+        );
+      }
+      return;
+    }
     const tapMessage = {
       kind: "output-tap",
       sessionId: payload?.sessionId,
@@ -247,7 +257,15 @@ function createSender(
       ) === true;
     }
     const deliver = (data, transformed = false) => {
-      if ((sessionOutputGenerations.get(sessionId) ?? 0) !== outputGeneration) return;
+      if ((sessionOutputGenerations.get(sessionId) ?? 0) !== outputGeneration) {
+        if (process.env.NETCATTY_ECHO_LOSS === "1") {
+          console.info(
+            `[echo-loss] worker-generation-drop(async): session=${sessionId}`
+            + ` ${String(data ?? "").length}B`,
+          );
+        }
+        return;
+      }
       const inheritedIngressBytes = payload?.meta?.pluginPipelineIngressBytes;
       const replayedRawIngressBytes = !transformed
         && !pipelineProcessed

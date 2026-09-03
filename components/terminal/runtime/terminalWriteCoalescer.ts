@@ -8,6 +8,7 @@ import {
   MAX_TERMINAL_WRITE_QUEUE_DRAIN_BYTES,
 } from "./terminalFlowConstants";
 import { shouldDegradeTerminalSideWork } from "./terminalOutputPressure";
+import { logTerminalEchoLoss } from "./terminalEchoLossDiagnostics";
 import {
   createWriteCoalescer,
   type WriteCoalesceScheduleMode,
@@ -789,6 +790,7 @@ export const abortTerminalWriteCoalescer = (
   takePendingPreserveSourceChunks(term);
   coalescer.abort();
   if (ingressDropped > 0) {
+    logTerminalEchoLoss("write-coalescer-abort", { bytes: ingressDropped });
     onDropped?.(ingressDropped);
   }
 };

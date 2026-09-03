@@ -20,6 +20,10 @@ import {
   clearTerminalSessionFlowAck,
   flushTerminalSessionFlowAck,
 } from "./terminalFlowAckBuffer";
+import {
+  formatEchoLossPreview,
+  logTerminalEchoLoss,
+} from "./terminalEchoLossDiagnostics";
 
 type FlowBackend = {
   setSessionFlowPaused?: (sessionId: string, paused: boolean) => void;
@@ -679,12 +683,20 @@ export const filterTerminalInterruptDisplayOutput = (
   const bytes = charLength(combinedText);
   const quietGapMs = gate.lastDroppedAt > 0 ? now - gate.lastDroppedAt : 0;
   const withPrefixDrop = (droppedBytes: number): number => droppedBytes + prefixDropBytes;
+  const noteDropped = (reason: string, bytes: number, dropped: string): void => {
+    logTerminalEchoLoss("interrupt-display-gate", {
+      reason,
+      bytes,
+      preview: formatEchoLossPreview(dropped),
+    });
+  };
 
   if (gate.pendingInterruptCaret) {
     gate.pendingInterruptCaret = false;
     if (text.startsWith("C")) {
       const restoreControls = extractTerminalStateRestoreControls(pendingDisplayControl);
       const droppedBytes = restoreControls.droppedBytes;
+      noteDropped("interrupt-echo", droppedBytes, pendingDisplayControl);
       gate.droppedBytes += droppedBytes;
       gate.droppedChunks += droppedBytes > 0 ? 1 : 0;
       disarmTerminalInterruptDisplayGate(term);
@@ -703,6 +715,7 @@ export const filterTerminalInterruptDisplayOutput = (
     const droppedPrefix = combinedText.slice(0, interruptEchoIndex);
     const restoreControls = extractTerminalStateRestoreControls(droppedPrefix);
     const droppedBytes = restoreControls.droppedBytes;
+    noteDropped("interrupt-echo", droppedBytes, droppedPrefix);
     gate.droppedBytes += droppedBytes;
     gate.droppedChunks += droppedBytes > 0 ? 1 : 0;
     disarmTerminalInterruptDisplayGate(term);
@@ -733,6 +746,7 @@ export const filterTerminalInterruptDisplayOutput = (
       );
       const restoreControls = extractTerminalStateRestoreControls(droppedPrefix);
       const droppedBytes = restoreControls.droppedBytes;
+      noteDropped("password-prompt", droppedBytes, droppedPrefix);
       gate.droppedBytes += droppedBytes;
       gate.droppedChunks += droppedBytes > 0 ? 1 : 0;
       disarmTerminalInterruptDisplayGate(term);
@@ -752,6 +766,7 @@ export const filterTerminalInterruptDisplayOutput = (
     const droppedPrefix = combinedText.slice(0, combinedText.length - promptCandidate.length);
     const restoreControls = extractTerminalStateRestoreControls(droppedPrefix);
     const droppedBytes = restoreControls.droppedBytes;
+    noteDropped("prompt-candidate", droppedBytes, droppedPrefix);
     gate.droppedBytes += droppedBytes;
     gate.droppedChunks += droppedBytes > 0 ? 1 : 0;
     disarmTerminalInterruptDisplayGate(term);
@@ -767,6 +782,7 @@ export const filterTerminalInterruptDisplayOutput = (
     const droppedPrefix = combinedText.slice(0, combinedText.length - promptCandidate.length);
     const restoreControls = extractTerminalStateRestoreControls(droppedPrefix);
     const droppedBytes = restoreControls.droppedBytes;
+    noteDropped("prompt-gap", droppedBytes, droppedPrefix);
     gate.droppedBytes += droppedBytes;
     gate.droppedChunks += droppedBytes > 0 ? 1 : 0;
     disarmTerminalInterruptDisplayGate(term);
@@ -780,6 +796,7 @@ export const filterTerminalInterruptDisplayOutput = (
 
   if (quietGapMs >= gate.quietMs) {
     const accepted = finalizeAcceptedTextAfterPendingDisplayControl(pendingDisplayControl, text);
+    noteDropped("quiet-gap", accepted.droppedBytes, combinedText);
     gate.droppedBytes += accepted.droppedBytes;
     gate.droppedChunks += accepted.droppedBytes > 0 ? 1 : 0;
     disarmTerminalInterruptDisplayGate(term);
@@ -793,6 +810,7 @@ export const filterTerminalInterruptDisplayOutput = (
 
   if (now - gate.startedAt >= gate.maxDrainMs) {
     const accepted = finalizeAcceptedTextAfterPendingDisplayControl(pendingDisplayControl, text);
+    noteDropped("max-drain", accepted.droppedBytes, combinedText);
     gate.droppedBytes += accepted.droppedBytes;
     gate.droppedChunks += accepted.droppedBytes > 0 ? 1 : 0;
     disarmTerminalInterruptDisplayGate(term);
@@ -808,6 +826,7 @@ export const filterTerminalInterruptDisplayOutput = (
     holdTrailingPartial: true,
   });
   const droppedBytes = restoreControls.droppedBytes;
+  noteDropped("draining", droppedBytes, combinedText);
   gate.pendingDisplayControl = restoreControls.pending;
   gate.pendingInterruptCaret = text.endsWith("^");
   gate.lastDroppedAt = now;
@@ -869,6 +888,7 @@ export const releaseTerminalFlowOutputForTerm = (
 ): void => {
   const resumeBackend = options.resumeBackend !== false;
   const onDropped = (bytes: number) => {
+    logTerminalEchoLoss("release-flow-output", { sessionId, bytes });
     acknowledgeDroppedBytes(flow, bytes, backend, sessionId);
   };
 
@@ -1014,6 +1034,7 @@ export const prioritizeTerminalInput = (
 
   const onDropped = (bytes: number) => {
     if (bytes <= 0) return;
+    logTerminalEchoLoss("interrupt-abort-write", { sessionId, bytes });
     ackAfterInput += bytes;
   };
 

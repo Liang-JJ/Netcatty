@@ -12,19 +12,38 @@ function hasPluginPipelineIngressMarker(meta) {
     && Number(meta.pluginPipelineIngressBytes) >= 0;
 }
 
+// Fork echo-loss diagnostics (see components/terminal/runtime/terminalEchoLossDiagnostics.ts).
+// Enable with localStorage.setItem("netcatty.debug.echoLoss", "1") + reload.
+function echoLossLog(where, detail) {
+  try {
+    if (
+      typeof window === "undefined"
+      || !window.localStorage
+      || window.localStorage.getItem("netcatty.debug.echoLoss") !== "1"
+    ) {
+      return;
+    }
+    console.info(`[echo-loss] ${where}: ${detail || ""}`);
+  } catch {
+    // Diagnostics must never affect the data path.
+  }
+}
+
 function createTerminalDataBacklog(options = {}) {
   const maxBytesPerSession = options.maxBytesPerSession ?? 64 * 1024;
   const pendingBySession = new Map();
 
-  function trimToLimit(value) {
+  function trimToLimit(sessionId, value) {
     if (value.length <= maxBytesPerSession) return value;
+    const dropped = value.length - maxBytesPerSession;
+    echoLossLog("backlog-trim", `session=${sessionId} ${dropped}B (oldest)`);
     return value.slice(value.length - maxBytesPerSession);
   }
 
   function append(sessionId, data, meta) {
     if (!sessionId || (!data && !hasPluginPipelineIngressMarker(meta))) return;
     const previous = pendingBySession.get(sessionId) || { data: "", meta: undefined };
-    const nextData = trimToLimit(previous.data + data);
+    const nextData = trimToLimit(sessionId, previous.data + data);
     const preserveTerminalPerf = previous.data.length === 0 && nextData === data;
     let previousMeta = previous.meta;
     let nextChunkMeta = meta;
@@ -94,7 +113,13 @@ function createTerminalDataDispatcher({
 }) {
   return function deliverToListeners(sessionId, data, meta) {
     if (!data && !hasPluginPipelineIngressMarker(meta)) return;
-    if (shouldDropSession(sessionId)) return;
+    if (shouldDropSession(sessionId)) {
+      echoLossLog(
+        "preload-session-dropped",
+        `session=${sessionId} ${String(data ?? "").length}B`,
+      );
+      return;
+    }
 
     if (!hasSessionListeners(displayDataListeners, sessionId)) {
       terminalDataBacklog?.append?.(sessionId, data, meta);
