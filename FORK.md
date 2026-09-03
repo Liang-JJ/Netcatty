@@ -81,6 +81,7 @@ npm run pack:win-x64
 - Bridge tests (`electron/bridges/*.test.cjs`) run alongside their source files in CommonJS.
 - Renderer/domain tests (`*.test.ts`) use `node --test --import tsx path/to/file.test.ts`.
 - Tests that import `electron` fail outside an Electron runtime — those are CI-only.
+- `createXTermRuntime.test.ts` 有一个 `test.skip`（alternate-screen history preview fallback）：上游在 IME 修复之后新增了 history preview 回退逻辑，但该功能本身与 IME 无关，fork 尚未 cherry-pick。rebase 到包含该功能的 tag 后删除 `.skip` 恢复测试。
 
 ### Review Boundaries (from AGENTS.md)
 - `electron/cli/*`, `netcatty-tool-cli`, the CLI discovery file, and the local TCP bridge are **internal integration surfaces** — do not assume they must support third-party callers or manual launches.
@@ -125,6 +126,26 @@ npm run pack:win-x64
 - `recoverWebglRendererOnAppResume` 原先只有 `ensureWebglRenderer()`；系统休眠/长时间最小化可能丢弃 GPU drawing buffer 而不触发 `webglcontextlost`，此时强制重绘会使用陈旧图集画出空白/花字形。补 `clearTextureAtlas()`，与 tab-reveal 恢复路径（#1063）一致。
 - 测试以源码断言锁定顺序（ensure → clear atlas）。
 - **rebase 注意**: 若上游重写 app resume 恢复逻辑，保留 clearTextureAtlas 调用即可。
+
+### 0c. Windows IME 标点卡键修复（#3103 #3077）
+
+**来源**: 上游 `4cd94fc19`（2026-08-30 合入 main，recover stuck IME punctuation deferral）、`4c7c9debd`（pair stale-flush press with synthesized release）、`4b39684c7`（drop stale IME deferral on modified keydowns）、`9822b8ba7`（only rewrite IME sentinel keyups to deferred key）、`d4bf3b78e`（pair stale-flush press with synthesized release）、`4b39684c7`（drop stale IME deferral on modified keydowns）、`60d7886ef`（bump version — 跳过）
+
+**涉及文件**: `components/terminal/runtime/createXTermRuntime.ts`（`resolveDeferredKeyupRelease`、`shouldDiscardStaleDeferredImeTextInput`、`shouldFlushDeferredImeTextInputOnKeyUp`、`imeTextInputDeferredKey`）、`components/terminal/runtime/terminalPerCharacterInput.ts`（+ `.test.ts`）、`components/terminal/runtime/terminalImeTextInput.test.ts`
+
+- **问题根因**: Windows IME（微软拼音）在输入标点（如 `*`、`-`）时，keyup 事件被 IME 消费为 Process/229 或直接丢弃，导致 `imeTextInputDeferredKey` 卡住，后续所有按键被拦截。
+- **修复**: 任意真实 keyup（非 IME sentinel）都终结 deferral；modified keydown（Ctrl/Alt/Meta）直接丢弃旧的 deferral；stale deferral flush 时配对发送合成的 keyup。
+- **rebase 注意**: 若上游已吸收这些提交（同名 commit message），cherry-pick 会被自动跳过；若 tag 同步后仍有空提交，`git cherry-pick --skip` 跳过。
+
+### 0d. 严格堡垒机逐字符写入（#3077）
+
+**来源**: 上游 `97a174c7b`（2026-08-30 合入 main）
+
+**涉及文件**: `components/terminal/runtime/createXTermRuntime.ts`（write loop）、`terminalPerCharacterInput.ts`（+ `.test.ts`）
+
+- **问题根因**: 严格堡垒机（QAX/奇安信）按 SSH channel write 计数而非字符数计费，超长 chunk 被静默丢弃。
+- **修复**: IME commit 和短 raw paste（<128 chars）每字符单独一次 `writeToSession` 调用；Kitty CSI-u 序列和 forwarded key 保持单次写入不变；命令缓冲区和广播仍使用原始未分割 payload。
+- **rebase 注意**: 若上游已吸收，cherry-pick 自动跳过。
 
 ### 1. 一键登录 + 全键盘操作
 
