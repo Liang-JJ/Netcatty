@@ -88,6 +88,19 @@ npm run pack:win-x64
 
 ---
 
+## 上游补丁暂存（tag 未发布前回移）
+
+### #3156 CJK IME 零宽字符输入过滤（上游 issue #3138）
+
+**来源**: 上游 `b27aef1cd` + `08044ee98`（2026-08-29 合入 main，晚于本 fork 的 v1.1.82 同步点 2026-08-27；上游尚未发布包含它的新 tag）。cherry-pick 时按上游 main 最终版补齐了测试断言（全角问号应保留）。
+
+**涉及文件**: `components/terminal/runtime/terminalInputSanitize.ts`、`terminalInputSanitize.test.ts`、`createXTermRuntime.ts`（onData / IME remap / Kitty 组合路径接线）
+
+- CJK IME（微软拼音/搜狗）切换组合模式时会偶发注入零宽 Unicode 字符（U+200B/U+FEFF/U+00AD/U+2060-64/方向标记），渲染宽度为 0 —— 命令行「隐藏字符」问题族（#3138）。ZWNJ/ZWJ 有语义，保留不过滤。
+- **rebase 处理**: rebase 到包含 #3156 的 tag 时，这两个提交会因 patch 等价被自动跳过；若产生空提交/冲突，直接丢弃 fork 副本即可。
+
+---
+
 ## 私有修改清单
 
 > **维护规则**: 每次新增私有特性或同步上游主干后，都必须更新此清单。新增特性要写明涉及文件和关键符号；被上游吸收的特性要移除；rebase 基准 tag 要更新到最新。
