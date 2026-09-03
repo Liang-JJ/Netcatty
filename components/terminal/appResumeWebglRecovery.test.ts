@@ -64,6 +64,19 @@ test("app resume handlers flush backlog and recover the terminal renderer before
   assert.doesNotMatch(resumeEffectSource, /\bisFocusMode\b/);
   assert.doesNotMatch(resumeEffectSource, /\bisFocused\b/);
   assert.doesNotMatch(source, /shouldRecoverOnAppResume/);
+
+  // App resume must also re-rasterize glyphs: suspend/minimize can drop GPU
+  // drawing buffers without webglcontextlost, leaving the texture atlas stale
+  // so the forced repaint shows blank glyphs. Same recovery as tab-reveal.
+  const recoverFnIndex = source.indexOf("const recoverWebglRendererOnAppResume = () => {");
+  assert.notEqual(recoverFnIndex, -1, "recoverWebglRendererOnAppResume must exist");
+  const recoverFnEnd = source.indexOf("};", recoverFnIndex);
+  const recoverFnSource = source.slice(recoverFnIndex, recoverFnEnd);
+  const ensureIndex = recoverFnSource.indexOf("ensureWebglRenderer()");
+  const clearAtlasIndex = recoverFnSource.indexOf("clearTextureAtlas()");
+  assert.notEqual(ensureIndex, -1, "app resume must ensure the WebGL renderer");
+  assert.notEqual(clearAtlasIndex, -1, "app resume must clear the WebGL texture atlas");
+  assert.ok(ensureIndex < clearAtlasIndex, "ensure WebGL renderer before clearing the atlas");
 });
 
 test("useTerminalBackend exposes onWindowShown so the resume hook actually fires", () => {

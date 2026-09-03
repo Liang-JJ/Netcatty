@@ -1836,6 +1836,12 @@ export function useTerminalEffects(ctx: TerminalEffectsContext) {
 
     const recoverWebglRendererOnAppResume = () => {
       xtermRuntimeRef.current?.ensureWebglRenderer();
+      // App suspend / long minimize can drop GPU drawing buffers without ever
+      // firing webglcontextlost. ensureWebglRenderer is then a no-op while the
+      // texture atlas still holds stale uploads, so the forced repaint below
+      // redraws blank/garbled glyphs. Clear the atlas so glyphs re-rasterize —
+      // the same recovery the tab-reveal path performs (issue #1063 family).
+      xtermRuntimeRef.current?.clearTextureAtlas();
     };
 
     const recoverTerminalOnAppResume = () => {

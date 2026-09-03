@@ -118,6 +118,14 @@ npm run pack:win-x64
 - 默认关闭零开销；复现时日志有输出→管线丢弃点，静默→渲染层（如 WebGL 字形空白）。
 - **rebase 注意**: 纯增量埋点（每处 1-3 行 + import），冲突时以上游实现为准、重新补埋点即可。
 
+### 0b. App 恢复时清理 WebGL 纹理图集
+
+**涉及文件**: `components/terminal/useTerminalEffects.ts`、`components/terminal/appResumeWebglRecovery.test.ts`
+
+- `recoverWebglRendererOnAppResume` 原先只有 `ensureWebglRenderer()`；系统休眠/长时间最小化可能丢弃 GPU drawing buffer 而不触发 `webglcontextlost`，此时强制重绘会使用陈旧图集画出空白/花字形。补 `clearTextureAtlas()`，与 tab-reveal 恢复路径（#1063）一致。
+- 测试以源码断言锁定顺序（ensure → clear atlas）。
+- **rebase 注意**: 若上游重写 app resume 恢复逻辑，保留 clearTextureAtlas 调用即可。
+
 ### 1. 一键登录 + 全键盘操作
 
 **涉及文件**: `components/QuickConnectWizard.tsx`, `components/ui/combobox.tsx`, `components/VaultView.tsx`, `components/vault/VaultViewLayout.tsx`, `domain/host.ts`, `domain/host.test.ts`, `application/i18n/locales/{en,zh-CN}/vault.ts`
