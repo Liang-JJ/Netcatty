@@ -90,7 +90,7 @@ test("renderer flow control acknowledges host ingress rather than transformed di
   );
   assert.match(
     attachmentSource,
-    /filtered\.accepted && !filtered\.data && pluginPipelineIngressBytes != null[\s\S]*?acknowledgeDroppedTerminalDisplayBytes\(ctx, pluginPipelineIngressBytes\)/u,
+    /filtered\.accepted && !filtered\.data && pluginPipelineIngressBytes != null[\s\S]*?acknowledgeDroppedTerminalDisplayBytes\(ctx, pluginPipelineIngressBytes/u,
   );
   assert.match(
     attachmentSource,
